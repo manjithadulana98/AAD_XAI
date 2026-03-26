@@ -1,0 +1,1791 @@
+{
+  "cv_strategy": "within_subject_5fold",
+  "model": "trf",
+  "window_s": 40.0,
+  "n_folds": 80,
+  "mean_accuracy": 0.6922332220746213,
+  "std_accuracy": 0.10966607572601449,
+  "config": {
+    "cv": "within_subject_5fold",
+    "model": "trf",
+    "window_s": 40.0,
+    "train_window_s": 40.0,
+    "overlap_s": 32.0,
+    "epochs": 1,
+    "patience": 1,
+    "seed": 42,
+    "lr": 0.001,
+    "batch_size": 64,
+    "weight_decay": 0.0001,
+    "max_folds": null,
+    "trf_tune_alpha": true,
+    "trf_alpha_metric": "aad_acc",
+    "trf_alphas": "0.01,0.1,1,10,100,1000,10000,100000",
+    "trf_max_train_seconds": 1200.0,
+    "trf_tmin_s": 0.0,
+    "trf_tmax_s": 0.5
+  },
+  "config_fingerprint": "95449320da630c980b93eb4985d98273f63d8b31b0a73fe7dc5b4432fe03ac46",
+  "per_fold": [
+    {
+      "test_accuracy": 0.6233766233766234,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S1_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S1",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5681818181818182,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 1.0,
+      "fold_id": "S1_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S1",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5314685314685315,
+      "base_window_accuracy": null,
+      "n_test": 143,
+      "n_trials": 4,
+      "trf_best_alpha": 0.1,
+      "fold_id": "S1_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S1",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.4774774774774775,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 0.01,
+      "fold_id": "S1_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S1",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6666666666666666,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S1_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S1",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S1_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7662337662337663,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S10_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S10",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7402597402597403,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S10_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S10",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7662337662337663,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S10_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S10",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6410256410256411,
+      "base_window_accuracy": null,
+      "n_test": 78,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S10_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S10",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.807909604519774,
+      "base_window_accuracy": null,
+      "n_test": 177,
+      "n_trials": 4,
+      "trf_best_alpha": 100.0,
+      "fold_id": "S10_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S10",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S10_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.625,
+      "base_window_accuracy": null,
+      "n_test": 144,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S11_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S11",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7090909090909091,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S11_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S11",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6103896103896104,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100.0,
+      "fold_id": "S11_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S11",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.44871794871794873,
+      "base_window_accuracy": null,
+      "n_test": 78,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S11_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S11",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.9090909090909091,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S11_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S11",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S11_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5818181818181818,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S12_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S12",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6181818181818182,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S12_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S12",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6923076923076923,
+      "base_window_accuracy": null,
+      "n_test": 78,
+      "n_trials": 4,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S12_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S12",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5324675324675324,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S12_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S12",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5855855855855856,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S12_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S12",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S12_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7045454545454546,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S13_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S13",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5675675675675675,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S13_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S13",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5988700564971752,
+      "base_window_accuracy": null,
+      "n_test": 177,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S13_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S13",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7012987012987013,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S13_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S13",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7532467532467533,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 0.01,
+      "fold_id": "S13_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S13",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S13_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.8636363636363636,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S14_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S14",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.8363636363636363,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 100.0,
+      "fold_id": "S14_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S14",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7117117117117117,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 1.0,
+      "fold_id": "S14_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S14",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7727272727272727,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S14_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S14",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.9009009009009009,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S14_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S14",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S14_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7181818181818181,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S15_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S15",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7297297297297297,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S15_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S15",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7272727272727273,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S15_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S15",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.75,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 0.1,
+      "fold_id": "S15_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S15",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7796610169491526,
+      "base_window_accuracy": null,
+      "n_test": 177,
+      "n_trials": 4,
+      "trf_best_alpha": 0.1,
+      "fold_id": "S15_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S15",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S15_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7402597402597403,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 0.01,
+      "fold_id": "S16_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S16",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.8558558558558559,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S16_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S16",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.9,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S16_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S16",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7207207207207207,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S16_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S16",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5974025974025974,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S16_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S16",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S16_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7847222222222222,
+      "base_window_accuracy": null,
+      "n_test": 144,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S2_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S2",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7307692307692307,
+      "base_window_accuracy": null,
+      "n_test": 78,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S2_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S2",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7636363636363637,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 10.0,
+      "fold_id": "S2_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S2",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6883116883116883,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S2_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S2",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5324675324675324,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S2_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S2",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S2_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6103896103896104,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S3_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S3",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7454545454545455,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 0.01,
+      "fold_id": "S3_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S3",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7430555555555556,
+      "base_window_accuracy": null,
+      "n_test": 144,
+      "n_trials": 4,
+      "trf_best_alpha": 100.0,
+      "fold_id": "S3_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S3",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6363636363636364,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S3_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S3",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.8738738738738738,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S3_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S3",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S3_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6216216216216216,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S4_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S4",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6493506493506493,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S4_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S4",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7909090909090909,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S4_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S4",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.782051282051282,
+      "base_window_accuracy": null,
+      "n_test": 78,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S4_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S4",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6727272727272727,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 1.0,
+      "fold_id": "S4_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S4",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S4_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7545454545454545,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 0.01,
+      "fold_id": "S5_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S5",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6818181818181818,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S5_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S5",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6883116883116883,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S5_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S5",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.8258426966292135,
+      "base_window_accuracy": null,
+      "n_test": 178,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S5_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S5",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.8311688311688312,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S5_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S5",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S5_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7636363636363637,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S6_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S6",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.625,
+      "base_window_accuracy": null,
+      "n_test": 144,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S6_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S6",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7545454545454545,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S6_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S6",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6538461538461539,
+      "base_window_accuracy": null,
+      "n_test": 78,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S6_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S6",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S6_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S6",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S6_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7792207792207793,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S7_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S7",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6223776223776224,
+      "base_window_accuracy": null,
+      "n_test": 143,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S7_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S7",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.8198198198198198,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 100.0,
+      "fold_id": "S7_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S7",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6794871794871795,
+      "base_window_accuracy": null,
+      "n_test": 78,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S7_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S7",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7792207792207793,
+      "base_window_accuracy": null,
+      "n_test": 77,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S7_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S7",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S7_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5454545454545454,
+      "base_window_accuracy": null,
+      "n_test": 143,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S8_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S8",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S8_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S8",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5909090909090909,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 0.01,
+      "fold_id": "S8_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S8",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5641025641025641,
+      "base_window_accuracy": null,
+      "n_test": 78,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S8_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S8",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6846846846846847,
+      "base_window_accuracy": null,
+      "n_test": 111,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S8_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S8",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S8_k5_5_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.9318181818181818,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S9_k5_1",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S9",
+        "k": 1,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_1_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5,
+      "base_window_accuracy": null,
+      "n_test": 44,
+      "n_trials": 4,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S9_k5_2",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S9",
+        "k": 2,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_2_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5818181818181818,
+      "base_window_accuracy": null,
+      "n_test": 110,
+      "n_trials": 4,
+      "trf_best_alpha": 0.01,
+      "fold_id": "S9_k5_3",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S9",
+        "k": 3,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_3_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_3_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_3_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6388888888888888,
+      "base_window_accuracy": null,
+      "n_test": 144,
+      "n_trials": 4,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S9_k5_4",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S9",
+        "k": 4,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_4_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_4_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_4_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.625,
+      "base_window_accuracy": null,
+      "n_test": 144,
+      "n_trials": 4,
+      "trf_best_alpha": 10.0,
+      "fold_id": "S9_k5_5",
+      "meta": {
+        "strategy": "within_subject_5fold",
+        "subject": "S9",
+        "k": 5,
+        "n_train": 12,
+        "n_val": 4,
+        "n_test": 4
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_5_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_5_window_predictions.csv",
+        "trial_csv": "results_trf_within_subject_5fold_literature_w10\\predictions\\within_subject_5fold_trf_w40p0s\\S9_k5_5_trial_predictions.csv"
+      }
+    }
+  ]
+}

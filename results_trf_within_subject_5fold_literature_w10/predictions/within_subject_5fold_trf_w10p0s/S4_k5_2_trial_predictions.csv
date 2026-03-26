@@ -1,0 +1,5 @@
+subject_id,trial_id,n_windows,y_true,y_pred,ref_outcome,pred_outcome,mean_p_class1
+S4,S4_T005,191,1,1,B,B,0.5602094240837696
+S4,S4_T008,58,0,0,A,A,0.3103448275862069
+S4,S4_T012,58,0,0,A,A,0.39655172413793105
+S4,S4_T019,58,1,0,B,A,0.4827586206896552

@@ -1,0 +1,57 @@
+[
+  {
+    "cv": "within_subject_5fold",
+    "model": "trf",
+    "window_s": 5.0,
+    "train_window_s": 5.0,
+    "overlap_s": 4.0,
+    "n_folds": 80,
+    "mean_accuracy": 0.5754412420873155,
+    "std_accuracy": 0.04558279594047773,
+    "time_s": 13941.0
+  },
+  {
+    "cv": "within_subject_5fold",
+    "model": "trf",
+    "window_s": 10.0,
+    "train_window_s": 10.0,
+    "overlap_s": 8.0,
+    "n_folds": 80,
+    "mean_accuracy": 0.6160431590271035,
+    "std_accuracy": 0.07042234567020719,
+    "time_s": 5860.0
+  },
+  {
+    "cv": "within_subject_5fold",
+    "model": "trf",
+    "window_s": 20.0,
+    "train_window_s": 20.0,
+    "overlap_s": 16.0,
+    "n_folds": 80,
+    "mean_accuracy": 0.6486649676113294,
+    "std_accuracy": 0.08558067914893774,
+    "time_s": 4750.0
+  },
+  {
+    "cv": "within_subject_5fold",
+    "model": "trf",
+    "window_s": 40.0,
+    "train_window_s": 40.0,
+    "overlap_s": 32.0,
+    "n_folds": 80,
+    "mean_accuracy": 0.6922332220746213,
+    "std_accuracy": 0.10966607572601449,
+    "time_s": 371.0
+  },
+  {
+    "cv": "within_subject_5fold",
+    "model": "trf",
+    "window_s": 60.0,
+    "train_window_s": 60.0,
+    "overlap_s": 48.0,
+    "n_folds": 80,
+    "mean_accuracy": 0.7165959916817384,
+    "std_accuracy": 0.12866045087494488,
+    "time_s": 6280.0
+  }
+]

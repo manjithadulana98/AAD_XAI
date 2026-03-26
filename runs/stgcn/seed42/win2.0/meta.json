@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-03-05T22:53:29.149926",
+  "split": {
+    "train": [
+      "S4",
+      "S3"
+    ],
+    "val": [
+      "S2"
+    ],
+    "test": [
+      "S1"
+    ]
+  },
+  "window_s": 2.0,
+  "seed": 42,
+  "config": {
+    "preprocess": {
+      "sfreq_out": 64,
+      "bandpass_hz": [
+        1.0,
+        8.0
+      ],
+      "reref": "average"
+    },
+    "window": {
+      "lengths_s": [
+        0.5,
+        1.0,
+        2.0,
+        5.0,
+        10.0,
+        30.0
+      ],
+      "overlap_s": 0.0
+    },
+    "split": {
+      "train_frac": 0.7,
+      "val_frac": 0.15,
+      "test_frac": 0.15,
+      "seed": 42
+    },
+    "train": {
+      "model": "stgcn",
+      "batch_size": 64,
+      "lr": 0.001,
+      "weight_decay": 0.0001,
+      "epochs": 15,
+      "patience": 5,
+      "num_seeds": 1,
+      "device": "cpu"
+    },
+    "dataset": "kul",
+    "dataset_root": "data/KULeuven",
+    "output_dir": "runs"
+  }
+}

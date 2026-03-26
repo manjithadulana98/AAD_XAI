@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-02-26T01:47:55.583330",
+  "split": {
+    "train": [
+      "synth_S03",
+      "synth_S04",
+      "synth_S02",
+      "synth_S07",
+      "synth_S06",
+      "synth_S01"
+    ],
+    "val": [
+      "synth_S05"
+    ],
+    "test": [
+      "synth_S00"
+    ]
+  },
+  "window_s": 1.0,
+  "seed": 42,
+  "config": {
+    "preprocess": {
+      "sfreq_out": 64,
+      "bandpass_hz": [
+        1.0,
+        8.0
+      ],
+      "reref": "average"
+    },
+    "window": {
+      "lengths_s": [
+        0.5,
+        1.0,
+        2.0,
+        5.0,
+        10.0,
+        30.0
+      ],
+      "overlap_s": 0.0
+    },
+    "split": {
+      "train_frac": 0.7,
+      "val_frac": 0.15,
+      "test_frac": 0.15,
+      "seed": 42
+    },
+    "train": {
+      "model": "stgcn",
+      "batch_size": 64,
+      "lr": 0.001,
+      "weight_decay": 0.0001,
+      "epochs": 2,
+      "patience": 5,
+      "num_seeds": 1,
+      "device": "cpu"
+    },
+    "dataset": "synthetic",
+    "dataset_root": "data_raw",
+    "output_dir": "runs"
+  }
+}

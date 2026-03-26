@@ -1,0 +1,57 @@
+[
+  {
+    "cv": "within_subject_story_speaker_out",
+    "model": "trf",
+    "window_s": 5.0,
+    "train_window_s": 5.0,
+    "overlap_s": 2.5,
+    "n_folds": 32,
+    "mean_accuracy": 0.6327882802681191,
+    "std_accuracy": 0.06088024265844746,
+    "time_s": 1373.4649984836578
+  },
+  {
+    "cv": "within_subject_story_speaker_out",
+    "model": "trf",
+    "window_s": 10.0,
+    "train_window_s": 10.0,
+    "overlap_s": 5.0,
+    "n_folds": 32,
+    "mean_accuracy": 0.6808649820574162,
+    "std_accuracy": 0.08492003951027007,
+    "time_s": 1238.137767791748
+  },
+  {
+    "cv": "within_subject_story_speaker_out",
+    "model": "trf",
+    "window_s": 20.0,
+    "train_window_s": 20.0,
+    "overlap_s": 10.0,
+    "n_folds": 32,
+    "mean_accuracy": 0.7238509068278804,
+    "std_accuracy": 0.10014556340097787,
+    "time_s": 1218.2559814453125
+  },
+  {
+    "cv": "within_subject_story_speaker_out",
+    "model": "trf",
+    "window_s": 40.0,
+    "train_window_s": 40.0,
+    "overlap_s": 20.0,
+    "n_folds": 32,
+    "mean_accuracy": 0.8055555555555556,
+    "std_accuracy": 0.10825317547305482,
+    "time_s": 1396.4051721096039
+  },
+  {
+    "cv": "within_subject_story_speaker_out",
+    "model": "trf",
+    "window_s": 60.0,
+    "train_window_s": 60.0,
+    "overlap_s": 30.0,
+    "n_folds": 32,
+    "mean_accuracy": 0.8586647727272727,
+    "std_accuracy": 0.12958074478062162,
+    "time_s": 394.00401735305786
+  }
+]

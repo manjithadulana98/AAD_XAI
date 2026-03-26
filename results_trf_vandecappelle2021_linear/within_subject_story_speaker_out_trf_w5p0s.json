@@ -1,0 +1,703 @@
+{
+  "cv_strategy": "within_subject_story_speaker_out",
+  "model": "trf",
+  "window_s": 5.0,
+  "n_folds": 32,
+  "mean_accuracy": 0.6327882802681191,
+  "std_accuracy": 0.06088024265844746,
+  "config": {
+    "cv": "within_subject_story_speaker_out",
+    "model": "trf",
+    "window_s": 5.0,
+    "train_window_s": 5.0,
+    "overlap_s": 2.5,
+    "epochs": 1,
+    "patience": 1,
+    "seed": 42,
+    "lr": 0.001,
+    "batch_size": 64,
+    "weight_decay": 0.0001,
+    "max_folds": null,
+    "trf_tune_alpha": true,
+    "trf_alpha_metric": "corr",
+    "trf_alphas": null,
+    "trf_max_train_seconds": 1200.0,
+    "trf_tmin_s": 0.0,
+    "trf_tmax_s": 0.25
+  },
+  "config_fingerprint": "051a32539e7af647d636bd3064b61cb28a87cd74162ae4635f682a855f227941",
+  "per_fold": [
+    {
+      "test_accuracy": 0.6136363636363636,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S1_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S1",
+        "test_content_group": 1,
+        "val_content_group": 2,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S1_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S1_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S1_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.635483870967742,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S1_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S1",
+        "test_content_group": 2,
+        "val_content_group": 4,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S1_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S1_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S1_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6688311688311688,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 100000.0,
+      "fold_id": "S10_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S10",
+        "test_content_group": 1,
+        "val_content_group": 3,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S10_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S10_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S10_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6709677419354839,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S10_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S10",
+        "test_content_group": 2,
+        "val_content_group": 3,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S10_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S10_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S10_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5681818181818182,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S11_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S11",
+        "test_content_group": 1,
+        "val_content_group": 3,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S11_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S11_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S11_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6129032258064516,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S11_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S11",
+        "test_content_group": 2,
+        "val_content_group": 4,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S11_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S11_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S11_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5422077922077922,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 100.0,
+      "fold_id": "S12_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S12",
+        "test_content_group": 1,
+        "val_content_group": 2,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S12_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S12_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S12_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.4612903225806452,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S12_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S12",
+        "test_content_group": 2,
+        "val_content_group": 4,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S12_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S12_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S12_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6201298701298701,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 100.0,
+      "fold_id": "S13_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S13",
+        "test_content_group": 1,
+        "val_content_group": 2,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S13_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S13_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S13_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6806451612903226,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 100.0,
+      "fold_id": "S13_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S13",
+        "test_content_group": 2,
+        "val_content_group": 1,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S13_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S13_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S13_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6558441558441559,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S14_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S14",
+        "test_content_group": 1,
+        "val_content_group": 3,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S14_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S14_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S14_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6709677419354839,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S14_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S14",
+        "test_content_group": 2,
+        "val_content_group": 4,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S14_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S14_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S14_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.711038961038961,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S15_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S15",
+        "test_content_group": 1,
+        "val_content_group": 4,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S15_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S15_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S15_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6096774193548387,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S15_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S15",
+        "test_content_group": 2,
+        "val_content_group": 4,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S15_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S15_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S15_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6136363636363636,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S16_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S16",
+        "test_content_group": 1,
+        "val_content_group": 4,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S16_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S16_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S16_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6290322580645161,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S16_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S16",
+        "test_content_group": 2,
+        "val_content_group": 4,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S16_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S16_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S16_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6785714285714286,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S2_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S2",
+        "test_content_group": 1,
+        "val_content_group": 3,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S2_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S2_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S2_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6580645161290323,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S2_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S2",
+        "test_content_group": 2,
+        "val_content_group": 1,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S2_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S2_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S2_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6753246753246753,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S3_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S3",
+        "test_content_group": 1,
+        "val_content_group": 4,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S3_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S3_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S3_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5741935483870968,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S3_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S3",
+        "test_content_group": 2,
+        "val_content_group": 3,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S3_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S3_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S3_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6396103896103896,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S4_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S4",
+        "test_content_group": 1,
+        "val_content_group": 3,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S4_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S4_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S4_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7064516129032258,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S4_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S4",
+        "test_content_group": 2,
+        "val_content_group": 3,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S4_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S4_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S4_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7272727272727273,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S5_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S5",
+        "test_content_group": 1,
+        "val_content_group": 2,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S5_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S5_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S5_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.7709677419354839,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S5_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S5",
+        "test_content_group": 2,
+        "val_content_group": 4,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S5_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S5_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S5_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6363636363636364,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S6_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S6",
+        "test_content_group": 1,
+        "val_content_group": 4,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S6_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S6_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S6_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5870967741935483,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S6_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S6",
+        "test_content_group": 2,
+        "val_content_group": 3,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S6_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S6_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S6_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5454545454545454,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S7_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S7",
+        "test_content_group": 1,
+        "val_content_group": 3,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S7_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S7_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S7_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6129032258064516,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S7_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S7",
+        "test_content_group": 2,
+        "val_content_group": 4,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S7_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S7_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S7_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5584415584415584,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S8_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S8",
+        "test_content_group": 1,
+        "val_content_group": 3,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S8_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S8_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S8_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.5838709677419355,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 10000.0,
+      "fold_id": "S8_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S8",
+        "test_content_group": 2,
+        "val_content_group": 3,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S8_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S8_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S8_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6753246753246753,
+      "base_window_accuracy": null,
+      "n_test": 308,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S9_storySpeakerOut_testCG1",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S9",
+        "test_content_group": 1,
+        "val_content_group": 3,
+        "test_speaker": 1
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S9_storySpeakerOut_testCG1_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S9_storySpeakerOut_testCG1_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S9_storySpeakerOut_testCG1_trial_predictions.csv"
+      }
+    },
+    {
+      "test_accuracy": 0.6548387096774193,
+      "base_window_accuracy": null,
+      "n_test": 310,
+      "n_trials": 2,
+      "trf_best_alpha": 1000.0,
+      "fold_id": "S9_storySpeakerOut_testCG2",
+      "meta": {
+        "strategy": "within_subject_leave_one_story_speaker_out",
+        "subject": "S9",
+        "test_content_group": 2,
+        "val_content_group": 1,
+        "test_speaker": 2
+      },
+      "artifacts": {
+        "confusion_json": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S9_storySpeakerOut_testCG2_confusion.json",
+        "base_window_csv": null,
+        "window_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S9_storySpeakerOut_testCG2_window_predictions.csv",
+        "trial_csv": "results_trf_vandecappelle2021_linear\\predictions\\within_subject_story_speaker_out_trf_w5p0s\\S9_storySpeakerOut_testCG2_trial_predictions.csv"
+      }
+    }
+  ]
+}

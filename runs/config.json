@@ -1,0 +1,40 @@
+{
+  "preprocess": {
+    "sfreq_out": 64,
+    "bandpass_hz": [
+      1.0,
+      8.0
+    ],
+    "reref": "average"
+  },
+  "window": {
+    "lengths_s": [
+      0.5,
+      1.0,
+      2.0,
+      5.0,
+      10.0,
+      30.0
+    ],
+    "overlap_s": 0.0
+  },
+  "split": {
+    "train_frac": 0.7,
+    "val_frac": 0.15,
+    "test_frac": 0.15,
+    "seed": 42
+  },
+  "train": {
+    "model": "trf",
+    "batch_size": 64,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "epochs": 30,
+    "patience": 5,
+    "num_seeds": 3,
+    "device": "cpu"
+  },
+  "dataset": "kul",
+  "dataset_root": "data/KULeuven",
+  "output_dir": "runs"
+}

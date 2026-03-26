@@ -1,0 +1,12 @@
+{
+  "tn": 8,
+  "fp": 14,
+  "fn": 8,
+  "tp": 14,
+  "total": 44,
+  "accuracy": 0.5,
+  "label_mapping": {
+    "0": "A(left)",
+    "1": "B(right)"
+  }
+}

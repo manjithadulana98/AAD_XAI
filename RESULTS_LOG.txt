@@ -1,0 +1,121 @@
+AAD XAI Starter — Results Log
+============================
+
+How to use this file
+- Each run/experiment gets a new dated entry appended at the end.
+- Record: method/protocol, key settings, and mean accuracy (± std) + what you’re comparing against.
+- If you compare across protocols (different CV, lags, overlap), note “not directly comparable”.
+
+----------------------------------------------------------------------
+Entry date: 2026-03-22
+Experiment: TRF — Vandecappelle et al. (eLife 2021) reproduction
+Sources:
+- results_trf_vandecappelle2021_linear/vandecappelle2021_linear_trf_summary.md
+- results_trf_vandecappelle2021_linear/vandecappelle2021_linear_trf_summary.json
+
+Method / Protocol
+- CV: within_subject_story_speaker_out (2 folds per subject; only stories with unique speakers)
+- Envelope: powerlaw_subbands (gammatone + powerlaw 0.6 + sum)
+- EEG preprocessing: bandpass 1–9 Hz, sfreq_out=20 Hz, average reference
+- Include experiments: 1,2 (exclude experiment-3 repeats)
+- TRF lags: 0–250 ms
+- Window overlap: 50% (overlap = window/2)
+- max_train_seconds: 1200s
+- tune_alpha: True (metric=corr), alpha_grid: logspace(-7..7,15)
+
+Results (mean accuracy ± std, n_folds=32)
+- 5s:  0.6328 ± 0.0609
+- 10s: 0.6809 ± 0.0849
+- 20s: 0.7239 ± 0.1001
+- 40s: 0.8056 ± 0.1083
+- 60s: 0.8587 ± 0.1296
+
+Latest / best accuracy
+- Latest(best): 0.8587 (60s)
+
+Change vs previous (within this same experiment)
+- Previous window (40s): 0.8056
+- Increase: +0.0531 (≈ +5.31 percentage points)
+
+Optional reference baseline (different protocol; not apples-to-apples)
+- Within-subject 5-fold TRF at 60s: 0.7166 ± 0.1287 (see results_trf_within_subject_5fold_literature_w10)
+- Difference: +0.1421 (≈ +14.21 percentage points)
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+Entry date: 2026-03-22
+Experiment: TRF — Within-subject 5-fold accuracy vs window
+Sources:
+- results_trf_within_subject_5fold_literature_w10/within_subject_5fold_trf_summary.md
+- results_trf_within_subject_5fold_literature_w10/within_subject_5fold_trf_summary.json
+
+Method / Protocol
+- CV: within_subject_5fold
+- Default stepping (literature-style): step=max(0.5s, L/5) so overlap=L-step (unless --overlap is provided)
+- TRF lags: 0–500 ms
+- max_train_seconds: 1200s
+- tune_alpha: True (metric=aad_acc)
+- alpha_grid: 0.01,0.1,1,10,100,1000,10000,100000
+
+Results (mean accuracy ± std, n_folds=80)
+- 5s:  0.5754 ± 0.0456
+- 10s: 0.6160 ± 0.0704
+- 20s: 0.6487 ± 0.0856
+- 40s: 0.6922 ± 0.1097
+- 60s: 0.7166 ± 0.1287
+
+Latest / best accuracy
+- Latest(best): 0.7166 (60s)
+
+Change vs previous (within this same experiment)
+- Previous window (40s): 0.6922
+- Increase: +0.0244 (≈ +2.44 percentage points)
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+Entry date: 2026-03-22
+Experiment: Starter runs — TRF / CNN / STGCN (single split)
+Sources:
+- runs/*/*/*/meta.json
+- runs/*/*/*/results.json
+- runs/config.json
+
+Method / Protocol
+- Evaluation type: single train/val/test split (NOT cross-validation)
+- Preprocess (from run configs): sfreq_out=64 Hz, bandpass 1–8 Hz, average reference
+- Window overlap: 0.0s
+
+Results (test accuracy)
+- TRF (KUL, window=1.0s, seed=42): 0.4500 (n_test_trials=60)
+- TRF (KUL, window=1.0s, seed=43): 0.4500 (n_test_trials=60)
+- CNN (Synthetic, window=1.0s, seed=42): 0.4750
+- CNN (KUL, window=2.0s, seed=42): 0.5533
+- STGCN (Synthetic, window=1.0s, seed=42): 0.4500
+- STGCN (KUL, window=2.0s, seed=42): 0.5620
+
+Notes
+- These numbers are not directly comparable to the TRF CV summaries above (different protocol + dataset + windowing).
+- runs/trf/seed44/win1.0 exists but has no results.json yet (only meta.json).
+----------------------------------------------------------------------
+
+Append template (copy/paste for new runs)
+----------------------------------------------------------------------
+Entry date: YYYY-MM-DD
+Experiment: <short name>
+Sources:
+- <path/to/summary.md>
+- <path/to/summary.json>
+
+Method / Protocol
+- CV:
+- Model:
+- Key preprocessing:
+- Key hyperparams:
+
+Results
+- Latest(best): <value>
+- Previous: <value>
+- Increase: <delta>
+Notes:
+- <anything important>
+----------------------------------------------------------------------
