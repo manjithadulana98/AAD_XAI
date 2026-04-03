@@ -32,9 +32,9 @@
     "epochs": 30,
     "patience": 5,
     "num_seeds": 3,
-    "device": "cpu"
+    "device": "cuda"
   },
-  "dataset": "kul",
-  "dataset_root": "data/KULeuven",
+  "dataset": "dtu",
+  "dataset_root": "aad_data/datasets/DTU",
   "output_dir": "runs"
 }
