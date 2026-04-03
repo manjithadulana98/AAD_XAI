@@ -3,20 +3,38 @@
 # Usage: bash scripts/train_gcp.sh
 set -e
 
-# ── Dataset path on GCP (GCS bucket mounted or copied locally) ──
-export DATASET=aad_data/datasets/DTU
+# ── Dataset settings ──
+DATASET_BUCKET_URI=${DATASET_BUCKET_URI:-gs://aad_data/datasets/DTU}
+LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-aad_data/datasets/DTU}
+export DATASET="$LOCAL_DATASET_DIR"
 ARTIFACTS_BUCKET_URI=${ARTIFACTS_BUCKET_URI:-gs://aad_data/artifacts/aad_xai}
 RUN_ID=${RUN_ID:-$(date +%Y%m%d_%H%M%S)}
 
 # ── Verify GPU is available ──
 echo "=== GPU Info ==="
 nvidia-smi || { echo "ERROR: No GPU detected. Ensure T4 is attached."; exit 1; }
-python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device: {torch.cuda.get_device_name(0)}')"
+
+# ── Ensure dataset is present locally (sync from bucket if needed) ──
+echo ""
+echo "=== Syncing DTU dataset from ${DATASET_BUCKET_URI} to ${LOCAL_DATASET_DIR} ==="
+mkdir -p "${LOCAL_DATASET_DIR}"
+if command -v gsutil >/dev/null 2>&1; then
+    gsutil -m rsync -r "${DATASET_BUCKET_URI}" "${LOCAL_DATASET_DIR}"
+else
+    echo "WARNING: gsutil not found. Assuming dataset already exists at ${LOCAL_DATASET_DIR}."
+fi
+if [ ! -d "${LOCAL_DATASET_DIR}/eeg_new" ] || [ ! -d "${LOCAL_DATASET_DIR}/Audio" ]; then
+    echo "ERROR: Dataset not found at ${LOCAL_DATASET_DIR}. Expected eeg_new/ and Audio/ folders."
+    exit 1
+fi
 
 # ── Install dependencies ──
 echo "=== Installing dependencies ==="
 pip install -e .
 pip install -r requirements.txt
+
+# ── Verify torch/cuda after dependencies are installed ──
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device: {torch.cuda.get_device_name(0)}')"
 
 # ── 1. Main framework: Train with DTU dataset on GPU ──
 echo ""
