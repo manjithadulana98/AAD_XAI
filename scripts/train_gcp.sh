@@ -5,6 +5,8 @@ set -e
 
 # ── Dataset path on GCP (GCS bucket mounted or copied locally) ──
 export DATASET=aad_data/datasets/DTU
+ARTIFACTS_BUCKET_URI=${ARTIFACTS_BUCKET_URI:-gs://aad_data/artifacts/aad_xai}
+RUN_ID=${RUN_ID:-$(date +%Y%m%d_%H%M%S)}
 
 # ── Verify GPU is available ──
 echo "=== GPU Info ==="
@@ -42,5 +44,18 @@ python cross_validate_ss.py \
     -j SS_AADNet_DTU
 
 cd ../..
+
+# ── Upload artifacts and metrics to GCS bucket ──
+echo ""
+echo "=== Uploading artifacts to ${ARTIFACTS_BUCKET_URI}/${RUN_ID} ==="
+if command -v gsutil >/dev/null 2>&1; then
+    gsutil -m rsync -r runs "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/runs"
+    gsutil -m rsync -r external/AADNet/output "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_output"
+    gsutil -m rsync -r external/AADNet/results "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_results"
+    echo "Artifacts uploaded successfully."
+else
+    echo "WARNING: gsutil not found. Skipping artifact upload."
+fi
+
 echo ""
 echo "=== Training complete ==="
