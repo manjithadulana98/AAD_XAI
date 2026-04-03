@@ -52,6 +52,11 @@ if command -v gsutil >/dev/null 2>&1; then
     gsutil -m rsync -r runs "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/runs"
     gsutil -m rsync -r external/AADNet/output "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_output"
     gsutil -m rsync -r external/AADNet/results "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_results"
+    echo "Verifying uploaded objects..."
+    gsutil ls "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/runs/**" | head -n 5 || true
+    gsutil ls "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_output/**" | head -n 5 || true
+    gsutil ls "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_results/**" | head -n 5 || true
+    echo "Full artifact path: ${ARTIFACTS_BUCKET_URI}/${RUN_ID}"
     echo "Artifacts uploaded successfully."
 else
     echo "WARNING: gsutil not found. Skipping artifact upload."
