@@ -6,7 +6,7 @@ set -euo pipefail
 # ── Dataset settings ──
 DATASET_BUCKET_URI=${DATASET_BUCKET_URI:-gs://aad_data/datasets/DTU}
 LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-aad_data/datasets/DTU}
-export DATASET="$LOCAL_DATASET_DIR"
+# DATASET is set to an absolute path after the directory is created/synced below.
 ARTIFACTS_BUCKET_URI=${ARTIFACTS_BUCKET_URI:-gs://aad_data/artifacts/aad_xai}
 RUN_ID=${RUN_ID:-$(date +%Y%m%d_%H%M%S)}
 RUN_AAD_XAI_STAGE=${RUN_AAD_XAI_STAGE:-0}
@@ -34,6 +34,9 @@ if [ ! -d "${LOCAL_DATASET_DIR}/eeg_new" ] || [ ! -d "${LOCAL_DATASET_DIR}/Audio
     echo "ERROR: Dataset not found at ${LOCAL_DATASET_DIR}. Expected eeg_new/ and Audio/ folders."
     exit 1
 fi
+# Resolve DATASET to an absolute path so it stays valid after `cd external/AADNet`
+export DATASET="$(realpath "${LOCAL_DATASET_DIR}")"
+echo "DATASET resolved to: ${DATASET}"
 
 # ── Install dependencies ──
 echo "=== Installing dependencies ==="
