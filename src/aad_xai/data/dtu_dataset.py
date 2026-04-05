@@ -12,7 +12,7 @@ class DTUDataset(BaseDataset):
     Expected layout (adjust to your release)::
 
         root/
-          EEG/
+          eeg_new/
             subj01/
               trial01.mat   # keys vary; common: 'data', 'fs', 'attended'
               trial02.mat
@@ -35,7 +35,7 @@ class DTUDataset(BaseDataset):
         self.root = Path(root)
 
     def trials(self) -> Iterator[Trial]:
-        eeg_dir = self.root / "EEG"
+        eeg_dir = self.root / "eeg_new"
         if not eeg_dir.exists():
             raise FileNotFoundError(
                 f"Expected EEG folder at {eeg_dir}. "
