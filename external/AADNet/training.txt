@@ -1,0 +1,81 @@
+# AADNet Training Commands (GCP VM)
+
+## Machine profile used for this runbook
+- VM: g2-standard-8
+- CPU/RAM: 8 vCPUs, 32 GB RAM
+- GPU: 1 x NVIDIA L4 (CUDA)
+
+## Recommended runtime tuning for this machine
+# Keep CPU thread usage bounded to avoid dataloader thrash on 8 vCPUs.
+export OMP_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+export NUMEXPR_MAX_THREADS=8
+
+# For AADNet configs, set num_workers in YAML to 4-6 for this VM.
+# Start with 4 if memory pressure is high, otherwise use 6.
+
+## 1) Go to project and activate virtual environment
+cd ~/training/AAD_XAI
+source .venv/bin/activate
+
+## 2) Install dependencies required by AADNet scripts
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install pyyaml mne-bids pandas seaborn
+
+## 3) Set DTU dataset path (local copy on VM)
+export DATASET=$PWD/aad_data/datasets/DTU
+echo $DATASET
+ls $DATASET/eeg_new | head
+ls $DATASET/Audio | head
+
+## 3.1) Update dataloader workers for this machine (recommended)
+# Adjust both SI and SS configs to use 6 workers on g2-standard-8.
+sed -i 's/^\(\s*num_workers:\s*\).*/\16/' external/AADNet/config/config_AADNet_SI_DTU.yml
+sed -i 's/^\(\s*num_workers:\s*\).*/\16/' external/AADNet/config/config_AADNet_SS_DTU.yml
+
+# Verify the values were applied.
+grep -n "num_workers" external/AADNet/config/config_AADNet_SI_DTU.yml
+grep -n "num_workers" external/AADNet/config/config_AADNet_SS_DTU.yml
+
+## 4) Optional: verify GPU while training (run in another terminal)
+watch -n 2 nvidia-smi
+
+## 5) Move into AADNet folder
+cd external/AADNet
+
+## 6) First run: LOSO training (recommended to start here)
+python cross_validate_loso.py -c config/config_AADNet_SI_DTU.yml -j LOSO_AADNet_DTU_retry
+
+## 7) Full subject-specific training
+python cross_validate_ss.py -c config/config_AADNet_SS_DTU.yml -j SS_AADNet_DTU_retry
+
+## 8) Verify local outputs/results were created
+cd ~/training/AAD_XAI
+ls -ltr external/AADNet/output | tail -n 30
+ls -ltr external/AADNet/results | tail -n 50
+
+## 9) (Optional) Upload training outputs/results to bucket
+export ARTIFACTS_BUCKET_URI=gs://aad_data/artifacts/aad_xai
+export RUN_ID=$(date +%Y%m%d_%H%M%S)
+gsutil -m rsync -r external/AADNet/output ${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_output
+gsutil -m rsync -r external/AADNet/results ${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_results
+gsutil ls ${ARTIFACTS_BUCKET_URI}/${RUN_ID}/**
+
+## 10) If upload fails with 403, run auth once and retry uploads
+gcloud auth login
+gcloud config set pass_credentials_to_gsutil true
+gcloud auth application-default login
+
+## 11) If training fails with missing module, install and retry
+# examples:
+python -m pip install pyyaml
+python -m pip install mne-bids
+
+## 12) If data loading feels too slow on this machine
+# 1) keep dataset local on VM disk (already done under aad_data/datasets/DTU)
+# 2) reduce workers to 4 if system is swapping
+# 3) monitor CPU+GPU in parallel
+#    - terminal A: watch -n 2 nvidia-smi
+#    - terminal B: top
+
