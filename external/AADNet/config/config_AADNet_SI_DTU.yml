@@ -59,7 +59,7 @@ learning:
         betas: (0.9, 0.999)
     running:
         num_workers: 0
-        batch_size: 128
+        batch_size: 256
         epochs: 20
         lambda: 100.0
         print_every: 1
