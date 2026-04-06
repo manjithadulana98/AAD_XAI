@@ -17,6 +17,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch.profiler import profile, record_function, ProfilerActivity
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
+torch.backends.cudnn.benchmark = True
 
 from runner import *
 from aadnet.EnvelopeAAD import *
@@ -100,8 +101,8 @@ def trainLOSO(config, jobname):
                 print(f'trainset: {len(trainset)}')
                 print(f'validset: {len(validset)}')
                 # dataloader
-                trainLoader = DataLoader(dataset=trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
-                validLoader = DataLoader(dataset=validset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+                trainLoader = DataLoader(dataset=trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, persistent_workers=(num_workers > 0))
+                validLoader = DataLoader(dataset=validset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, persistent_workers=(num_workers > 0))
                 model_path = os.path.join(output_path, f"{model_params['model_name']}_SI_T_{T}_s_{s}_fold_{fold}.pth")
                 if model_params['pretrained'] is not None:
                     pretrained_path = os.path.abspath(f"{model_params['pretrained']}_T_{T}_s_{s}_fold_{fold}.pth")
@@ -121,10 +122,10 @@ def trainLOSO(config, jobname):
                 print(f'testset: {len(testset)}')
                 for t in range(len(windows)):
                     validset.setWindowSize(windows[t])
-                    validLoader = DataLoader(dataset=validset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)       
+                    validLoader = DataLoader(dataset=validset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, persistent_workers=(num_workers > 0))
                     loss, train_accs[t, s, fold]  = evaluate(model, validLoader, device, criterion, sr, model_path=model_path, jobname=f'{jobname}_SI_{s}_fold_{fold}_train', print_output=False)
                     testset.setWindowSize(windows[t])
-                    testLoader = DataLoader(dataset=testset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+                    testLoader = DataLoader(dataset=testset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, persistent_workers=(num_workers > 0))
                     loss, test_accs[t, s, fold]  = evaluate(model, testLoader, device, criterion, sr, model_path=model_path, jobname=f'{jobname}_SI_{s}_fold_{fold}_test', print_output=False)
                     del validLoader, testLoader
                 print(f'sbj {s} fold_valid: loss={loss}, acc={train_accs[:, s, fold]}')

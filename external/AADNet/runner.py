@@ -74,7 +74,6 @@ def fit(model, criterion, optimizer, lr_scheduler, train_loader, valid_loader, e
             loss.backward()
             optimizer.step()
             del eeg, aud, y_true, y_hat, loss
-            torch.cuda.empty_cache()
         lr_scheduler.step()
         if isinstance(criterion, CorrelationLoss) and len(acc_reconst) > 1:
             acc = torch.mean(torch.hstack(acc_reconst)) 
@@ -115,26 +114,9 @@ def fit(model, criterion, optimizer, lr_scheduler, train_loader, valid_loader, e
                   f'Train acc: {train_accs[epoch]:.8f}\t'
                   f'Valid acc: {valid_accs[epoch]:.8f}\t')
 
-        torch.cuda.empty_cache()
         if (early_stopping_waiting > patience):
             break
     plt.clf()
-    plt.plot(train_accs,'b-', label="train accuracy")
-    plt.plot(valid_accs,'r.', label="validation accuracy")
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    filepath = os.path.join(os.path.dirname(model_path), f"{jobname}_accuracy_curve.png") 
-    plt.savefig(filepath, dpi=300, bbox_inches='tight')
-    # plot loss    
-    plt.clf()
-    plt.plot(train_losses,'b-', label="train loss")
-    plt.plot(valid_losses,'r.', label="validation loss")
-    plt.xlabel('Epochs')
-    plt.ylabel('CEL loss')
-    plt.legend()
-    filepath = os.path.join(os.path.dirname(model_path), f"{jobname}_loss_curve.png") 
-    plt.savefig(filepath, dpi=300, bbox_inches='tight')
     plt.close()
 
 def evaluate(model, data_loader, device, criterion, sr, model_path, jobname=None, print_output=False):
@@ -183,7 +165,6 @@ def evaluate(model, data_loader, device, criterion, sr, model_path, jobname=None
                 all_y_hat.append(y_hat.data)   
             all_y_true.append(y_true.data)                     
         total_loss += loss.item()*batch_size
-        torch.cuda.empty_cache()
         del eeg, aud, y_true, y_hat, loss
         
     # (TP,FP,TN,FN,acc,threshold) = metrics(torch.cat(all_y_hat), torch.cat(all_y_true), thresh=threshold, weighted=weighted)
