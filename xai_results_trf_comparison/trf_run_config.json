@@ -1,0 +1,20 @@
+{
+  "seed": 42,
+  "n_boot": 500,
+  "max_samples": 200,
+  "n_train": 140,
+  "n_test": 60,
+  "trf_tmin": 0.0,
+  "trf_tmax": 0.5,
+  "trf_alpha": 100.0,
+  "trf_train_corr": -0.012763910353513014,
+  "baseline_accuracy": 0.6,
+  "baseline_mean_p": 0.5291813611984253,
+  "sections": [
+    "C",
+    "D",
+    "H",
+    "I",
+    "J"
+  ]
+}

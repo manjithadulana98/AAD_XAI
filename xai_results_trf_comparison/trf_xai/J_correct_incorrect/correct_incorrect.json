@@ -1,0 +1,26 @@
+{
+  "n_correct": 36,
+  "n_incorrect": 24,
+  "accuracy": 0.6,
+  "mean_r_att": 0.17232022424250282,
+  "mean_r_unatt": 0.05234228902959957,
+  "top10_overlap": 5,
+  "channel_diff_t_stat": -1.0055600263727247,
+  "channel_diff_p_value": 0.3165544605455676,
+  "roi_correct": {
+    "Frontal": 0.008785742465988733,
+    "Fronto-Central": 0.003682956623379141,
+    "Central": 0.0039148524204695905,
+    "Temporal": 0.0023401438375003636,
+    "Parietal": 0.004929384589862214,
+    "Occipital": 0.005001854442525655
+  },
+  "roi_incorrect": {
+    "Frontal": 0.00591111675233454,
+    "Fronto-Central": 0.0032617497611984922,
+    "Central": 0.005723469686927274,
+    "Temporal": 0.007792094250258212,
+    "Parietal": 0.008392431715037674,
+    "Occipital": 0.004511883144732565
+  }
+}

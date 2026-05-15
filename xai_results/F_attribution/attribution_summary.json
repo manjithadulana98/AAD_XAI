@@ -1,0 +1,79 @@
+{
+  "gradcam": {
+    "decoder.extractor.blocks.0.conv_0": {
+      "mean_abs": 0.00027998254518024623,
+      "max": 0.0025024455972015858,
+      "shape": [
+        5,
+        1,
+        313
+      ],
+      "normalised": 0.5991288582112391
+    },
+    "decoder.extractor.blocks.1.conv_1": {
+      "mean_abs": 0.0002993765810970217,
+      "max": 0.0024388660676777363,
+      "shape": [
+        5,
+        1,
+        313
+      ],
+      "normalised": 0.6406297545883509
+    },
+    "decoder.extractor.blocks.2.conv_2": {
+      "mean_abs": 9.314144699601457e-05,
+      "max": 0.0013444586656987667,
+      "shape": [
+        5,
+        1,
+        313
+      ],
+      "normalised": 0.1993114562014561
+    },
+    "decoder.extractor.blocks.3.conv_3": {
+      "mean_abs": 0.00010860762995434925,
+      "max": 0.0012405244633555412,
+      "shape": [
+        5,
+        1,
+        313
+      ],
+      "normalised": 0.23240722126333807
+    },
+    "decoder.extractor.blocks.4.conv_4": {
+      "mean_abs": 6.223528907867149e-05,
+      "max": 0.00073013681685552,
+      "shape": [
+        5,
+        1,
+        313
+      ],
+      "normalised": 0.13317600803345211
+    },
+    "decoder.output_context.conv": {
+      "mean_abs": 0.0004673160728998482,
+      "max": 0.0019136923365294933,
+      "shape": [
+        5,
+        1,
+        320
+      ],
+      "normalised": 1.0
+    }
+  },
+  "ig": {
+    "mean_abs": 0.0010378864826634526,
+    "channel_importance_top10": [
+      51,
+      42,
+      52,
+      14,
+      43,
+      50,
+      23,
+      15,
+      41,
+      13
+    ]
+  }
+}

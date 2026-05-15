@@ -1,0 +1,102 @@
+{
+  "extractor.blocks.0.conv_0": {
+    "accuracy_mean": 0.5,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "extractor.blocks.0.ln_0": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.5,
+    "n_folds": 1
+  },
+  "extractor.blocks.1.conv_1": {
+    "accuracy_mean": 0.5,
+    "auc_mean": 0.5,
+    "n_folds": 1
+  },
+  "extractor.blocks.1.ln_1": {
+    "accuracy_mean": 0.5,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "extractor.blocks.2.conv_2": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "extractor.blocks.2.ln_2": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "extractor.blocks.3.conv_3": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "extractor.blocks.3.ln_3": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "extractor.blocks.4.conv_4": {
+    "accuracy_mean": 0.5,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "extractor.blocks.4.ln_4": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "block_denses.0": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "output_context.pad": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "output_context.conv": {
+    "accuracy_mean": 1.0,
+    "auc_mean": 1.0,
+    "n_folds": 1
+  },
+  "output_context.ln": {
+    "accuracy_mean": 1.0,
+    "auc_mean": 1.0,
+    "n_folds": 1
+  },
+  "output_context.act": {
+    "accuracy_mean": 1.0,
+    "auc_mean": 1.0,
+    "n_folds": 1
+  },
+  "output_context": {
+    "accuracy_mean": 1.0,
+    "auc_mean": 1.0,
+    "n_folds": 1
+  },
+  "block_denses.1": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "block_denses.2": {
+    "accuracy_mean": 1.0,
+    "auc_mean": 1.0,
+    "n_folds": 1
+  },
+  "block_denses.3": {
+    "accuracy_mean": 0.75,
+    "auc_mean": 0.75,
+    "n_folds": 1
+  },
+  "final_dense": {
+    "accuracy_mean": 1.0,
+    "auc_mean": 1.0,
+    "n_folds": 1
+  }
+}

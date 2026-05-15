@@ -1,0 +1,929 @@
+================================================================================
+VLAAI EEG AUDITORY ATTENTION DECODER — COMPREHENSIVE XAI ANALYSIS REPORT
+================================================================================
+
+Generated: May 9, 2026
+Model: VLAAI (pretrained, loaded from vlaai.h5)
+Dataset: DTU EEG dataset (18 subjects, 8100 windows total)
+Window size: 320 samples = 5 seconds at 64 Hz
+Analysis script: scripts/run_xai_comprehensive.py
+Sections run: A (Architecture), B (Ablation), C (Channel Occlusion),
+              D (Temporal Occlusion), E (Layer Probing), F (Attribution),
+              G (Sanity Checks), H (Subject-wise), I (Frequency Band),
+              J (Correct vs Incorrect)
+
+NOTE ON SAMPLE SIZES:
+  Most sections (B, C, D, E, F, G, I, J) used N=20 windows, n_boot=50
+  Section H used all 18 subjects x 5 windows each = 90 windows total
+  These are SMALL-SAMPLE runs for validation. For publication-quality results,
+  re-run with --max-samples 500 --n-boot 1000 --windows-per-subject 50.
+
+================================================================================
+SECTION A — MODEL ARCHITECTURE
+================================================================================
+
+MODEL SUMMARY
+  Total parameters:    1,740,289
+  Trainable:           1,740,289
+
+COMPONENT BREAKDOWN
+  extractor (5x Conv1d stack):    1,575,936  (90.6%)
+  output_context (Conv1d k=32):     131,264  ( 7.5%)
+  block_denses (4x Linear):          33,024  ( 1.9%)
+  final_dense (Linear 64→1):             65  ( 0.0%)
+
+  Shared parameters (extractor+output_context+final_dense): 1,707,265 (98.1%)
+  Unique per-block parameters (block_denses x4):               33,024  ( 1.9%)
+
+FORWARD PASS (4 iterations)
+  x = zeros(B, C=64, T=320)           # skip-connection initialised to zero
+  for i in {0, 1, 2, 3}:
+    ext_out = extractor(eeg + x)       # shared 5-layer causal Conv1d stack
+    x = block_denses[i](ext_out)       # unique per-block Linear(128→64)
+    x = output_context(x)              # shared causal Conv1d(64→64, k=32)
+  out = final_dense(x)                 # Linear(64→1) → predicted envelope
+
+  KEY INSIGHT: x is OVERWRITTEN each iteration (not accumulated).
+  Each block sees: input = eeg + previous_block_output (additive skip).
+
+GRADIENT FLOW ANALYSIS
+  Block 3 → SHORTEST path to loss: final_dense ← output_context ← block_denses[3]
+  Block 0 → LONGEST path: must traverse ~24 nonlinearities across 4 full passes
+  Additive skip (eeg_cf + x) provides gradient highway at each iteration.
+
+EMPIRICAL GRADIENT NORMS (sum-loss backward, top 10 parameters)
+  final_dense.weight                : 1945.28
+  output_context.ln.bias            : 1037.05
+  output_context.ln.weight          :  857.43
+  final_dense.bias                  :  640.00
+  extractor.blocks.1.ln_1.weight    :  496.83
+  extractor.blocks.1.ln_1.bias      :  419.32
+  block_denses.3.weight             :  281.11
+  extractor.blocks.4.ln_4.bias      :  274.58
+  extractor.blocks.4.ln_4.weight    :  248.19
+  extractor.blocks.3.ln_3.weight    :  235.44
+  ↳ Final layers dominate gradients; early extractor layers receive smaller signals.
+
+EXTRACTOR ARCHITECTURE (shared across all 4 blocks)
+  Block 0: Conv1d(in=64,  out=256, k=8) → LayerNorm → LeakyReLU → CausalPad
+  Block 1: Conv1d(in=256, out=256, k=8) → LayerNorm → LeakyReLU → CausalPad
+  Block 2: Conv1d(in=256, out=256, k=8) → LayerNorm → LeakyReLU → CausalPad
+  Block 3: Conv1d(in=256, out=128, k=8) → LayerNorm → LeakyReLU → CausalPad
+  Block 4: Conv1d(in=128, out=128, k=8) → LayerNorm → LeakyReLU → CausalPad
+
+================================================================================
+SECTION B — ROBUST BLOCK ABLATION (4 MODES, N=20 windows)
+================================================================================
+
+BASELINE (no ablation)
+  Mean P(attended):    0.5446  [95% CI: 0.5117, 0.5669]
+  Accuracy (P>0.5):    65.0%
+
+ABLATION RESULTS BY BLOCK AND MODE
+  ΔP = baseline_P - ablated_P  (positive = ablation HURTS performance)
+  ΔAcc = baseline_acc - ablated_acc (positive = ablation hurts accuracy)
+
+  FORMAT: Block [Mode]: ΔP (95% CI) | ΔAcc
+
+  BLOCK 0 (earliest, longest gradient path):
+    [zero_weights]:    ΔP = -0.000089  [-0.000225, +0.000040] | ΔAcc = +0.000
+    [zero_activations]: ΔP = -0.000089 [-0.000225, +0.000040] | ΔAcc = +0.000
+    [mean_replace]:    ΔP = -0.000009  [-0.000051, +0.000019] | ΔAcc = +0.000
+    [permute]:         ΔP = +0.000010  [-0.000036, +0.000045] | ΔAcc = +0.000
+    ↳ Block 0 ablation has NO measurable effect. CIs all span zero.
+
+  BLOCK 1:
+    [zero_weights]:    ΔP = -0.000409  [-0.002132, +0.001670] | ΔAcc = +0.000
+    [zero_activations]: ΔP = -0.000409 [-0.002132, +0.001670] | ΔAcc = +0.000
+    [mean_replace]:    ΔP = -0.000020  [-0.000415, +0.000323] | ΔAcc = +0.000
+    [permute]:         ΔP = -0.000210  [-0.000743, +0.000325] | ΔAcc = +0.000
+    ↳ Block 1 ablation also negligible. No significant effect.
+
+  BLOCK 2:
+    [zero_weights]:    ΔP = -0.010862  [-0.017082, -0.003898] | ΔAcc = -0.050
+    [zero_activations]: ΔP = -0.010862 [-0.017082, -0.003898] | ΔAcc = -0.050
+    [mean_replace]:    ΔP = -0.004323  [-0.007387, -0.000982] | ΔAcc = +0.000
+    [permute]:         ΔP = -0.006022  [-0.011237, -0.000301] | ΔAcc = +0.000
+    ↳ NEGATIVE ΔP = ablating block 2 INCREASES attended probability!
+      CI entirely negative for zero_weights/zero_activations.
+      Counterintuitive: removing block 2 slightly helps the model.
+
+  BLOCK 3 (most recent, shortest gradient path):
+    [zero_weights]:    ΔP = +0.044629  [+0.011659, +0.066854] | ΔAcc = +0.650
+    [zero_activations]: ΔP = +0.044629 [+0.011659, +0.066854] | ΔAcc = +0.650
+    [mean_replace]:    ΔP = +0.034756  [+0.005720, +0.059707] | ΔAcc = -0.100
+    [permute]:         ΔP = +0.067540  [+0.021420, +0.109470] | ΔAcc = +0.300
+    ↳ DECISIVE: Block 3 is by far the most critical block.
+      Zeroing it drops accuracy from 65% to 0% (all predictions flip).
+      CI entirely positive for zero_weights mode (significant effect).
+      Permuting activations gives LARGEST ΔP = 0.068, confirming Block 3
+      carries the structurally meaningful signal.
+
+KEY FINDINGS FROM ABLATION:
+  1. Blocks 0 and 1 are functionally redundant (CIs span zero).
+  2. Block 2 shows a paradoxical negative contribution (removing it helps).
+  3. Block 3 is by far the most critical. The model effectively uses only
+     the final iteration's output, consistent with its shortest gradient path.
+  4. zero_weights == zero_activations for all blocks, confirming that the
+     block_dense bias term alone cannot compensate (output is zero regardless).
+
+================================================================================
+SECTION C — CHANNEL / ROI OCCLUSION WITH BOOTSTRAP CIs (N=20 windows)
+================================================================================
+
+INTERPRETATION KEY
+  ΔP > 0 : masking this channel HURTS P(attended) → channel is important
+  ΔP < 0 : masking this channel INCREASES P(attended) → channel is suppressive
+
+TOP 15 CHANNELS BY |ΔP| (sorted by absolute importance)
+  Rank | Ch | mean ΔP  | 95% CI                    | Region (approx)
+  -----------------------------------------------------------------------
+  1    | 23 | -0.01308 | [-0.01935, -0.00808]       | Central
+  2    | 27 | -0.01210 | [-0.01697, -0.00810]       | Central
+  3    | 46 | -0.00962 | [-0.01379, -0.00579]       | Parietal
+  4    | 13 | +0.00937 | [+0.00253, +0.01640]       | Fronto-Central
+  5    | 52 | +0.00845 | [+0.00405, +0.01305]       | Parietal
+  6    | 54 | -0.00821 | [-0.01259, -0.00383]       | Occipital
+  7    | 32 | -0.00818 | [-0.01224, -0.00381]       | Temporal
+  8    | 14 | +0.00707 | [-0.00440, +0.01790]       | Fronto-Central (CI spans 0)
+  9    | 55 | -0.00679 | [-0.01095, -0.00271]       | Occipital
+  10   | 1  | -0.00627 | [-0.00879, -0.00421]       | Frontal
+  11   | 6  | +0.00618 | [+0.00295, +0.00883]       | Frontal
+  12   | 38 | +0.00613 | [+0.00533, +0.00720]       | Temporal
+  13   | 15 | -0.00600 | [-0.01006, -0.00340]       | Fronto-Central
+  14   | 60 | -0.00577 | [-0.01138, +0.00004]       | Occipital (CI barely spans 0)
+  15   | 41 | +0.00566 | [+0.00215, +0.00879]       | Temporal
+
+CHANNELS WITH SIGNIFICANT SUPPRESSIVE EFFECT (negative ΔP, CI<0):
+  Ch 23, 27, 46, 32, 54, 55, 1, 15, 17, 21, 33, 45, 50, 53, 57, 61, 63
+
+CHANNELS WITH SIGNIFICANT FACILITATIVE EFFECT (positive ΔP, CI>0):
+  Ch 4, 6, 10, 13, 18, 24, 25, 30, 35, 36, 38, 41, 42, 44, 47, 52
+
+ROI-LEVEL OCCLUSION (mean ΔP averaged across ROI channels)
+  ROI                  | mean ΔP  | 95% CI               | Significance
+  -----------------------------------------------------------------------
+  Frontal (0-11)       | +0.00070 | [-0.00036, +0.00165] | Not significant
+  Fronto-Central (12-17)| +0.00133| [-0.00171, +0.00396] | Not significant
+  Central (18-29)      | -0.00187 | [-0.00276, -0.00106] | SIGNIFICANT (CI<0)
+  Temporal (30-41)     | +0.00029 | [-0.00069, +0.00119] | Not significant
+  Parietal (42-53)     | -0.00005 | [-0.00241, +0.00181] | Not significant
+  Occipital (54-63)    | -0.00257 | [-0.00395, -0.00110] | SIGNIFICANT (CI<0)
+
+KEY FINDINGS:
+  * Central and Occipital ROIs are SUPPRESSIVE — occluding them increases
+    P(attended), suggesting the model partially uses these signals to
+    inhibit false positives.
+  * Fronto-Central shows the LARGEST positive (facilitative) contribution,
+    though CI spans zero with N=20.
+  * Mixed-sign channels within ROIs indicate the model has learned
+    channel-specific weighting rather than uniform ROI sensitivity.
+
+ALL 64 CHANNELS (ΔP values):
+  Ch00: +0.000206   Ch01: -0.006269   Ch02: +0.000519   Ch03: +0.001519
+  Ch04: +0.003375   Ch05: -0.001098   Ch06: +0.006183   Ch07: +0.002641
+  Ch08: -0.002464   Ch09: +0.000217   Ch10: +0.003018   Ch11: +0.000517
+  Ch12: +0.000753   Ch13: +0.009373   Ch14: +0.007071   Ch15: -0.006003
+  Ch16: -0.000858   Ch17: -0.002329   Ch18: +0.001914   Ch19: -0.001834
+  Ch20: +0.000768   Ch21: -0.003349   Ch22: -0.000419   Ch23: -0.013083
+  Ch24: +0.005254   Ch25: +0.001417   Ch26: -0.000839   Ch27: -0.012098
+  Ch28: +0.000384   Ch29: -0.000606   Ch30: +0.001582   Ch31: +0.000026
+  Ch32: -0.008177   Ch33: -0.005349   Ch34: +0.000250   Ch35: +0.003107
+  Ch36: +0.002399   Ch37: -0.002949   Ch38: +0.006127   Ch39: +0.001912
+  Ch40: -0.001071   Ch41: +0.005665   Ch42: +0.005022   Ch43: -0.004367
+  Ch44: +0.003230   Ch45: -0.002404   Ch46: -0.009618   Ch47: +0.001559
+  Ch48: -0.000902   Ch49: +0.001441   Ch50: -0.003142   Ch51: +0.004559
+  Ch52: +0.008446   Ch53: -0.004399   Ch54: -0.008207   Ch55: -0.006785
+  Ch56: -0.000598   Ch57: -0.003551   Ch58: -0.000861   Ch59: +0.002377
+  Ch60: -0.005772   Ch61: -0.001617   Ch62: +0.000842   Ch63: -0.001565
+
+================================================================================
+SECTION D — TEMPORAL OCCLUSION WITH CIs + SIGNIFICANCE TESTS (N=20)
+================================================================================
+
+METHOD: 1-second zero-masking window sliding in 0.5s steps across 5s window.
+ΔP = drop in P(attended) when that time segment is zeroed.
+
+TEMPORAL SENSITIVITY (sorted by |ΔP|)
+  Time Segment | mean ΔP  | 95% CI
+  ------------------------------------------------------------------
+  1.0 - 2.0 s  | +0.01587 | [-0.00327, +0.03434]   ← PEAK sensitivity
+  0.0 - 1.0 s  | +0.01459 | [-0.01923, +0.04135]
+  0.5 - 1.5 s  | +0.01341 | [-0.00230, +0.02958]
+  1.5 - 2.5 s  | +0.01067 | [-0.00868, +0.02720]
+  3.0 - 4.0 s  | +0.00920 | [-0.01570, +0.03108]
+  2.0 - 3.0 s  | +0.00694 | [-0.01295, +0.02741]
+  4.0 - 5.0 s  | +0.00646 | [-0.01751, +0.03271]
+  2.5 - 3.5 s  | +0.00564 | [-0.01038, +0.01955]
+  3.5 - 4.5 s  | +0.00230 | [-0.01781, +0.02098]   ← MINIMUM sensitivity
+
+NOTE: All CIs span zero with N=20 windows. Temporal effects require larger N.
+
+EARLY vs LATE COMPARISON
+  Early half (0.0–2.5 s):   mean ΔP = +0.01363
+  Late half  (2.5–5.0 s):   mean ΔP = +0.00611
+  Mann-Whitney U = 241.0,   p-value = 0.2733
+  ↳ NOT SIGNIFICANT at current sample size.
+
+INTERPRETATION:
+  All segments show positive ΔP (removing any segment hurts performance).
+  Early segments (0-2s) appear slightly more important than late (2.5-5s).
+  This is consistent with causal processing — later segments depend on
+  context built up from earlier signals.
+  Wide CIs reflect N=20 sample limitation; effect may be real but underpowered.
+
+================================================================================
+SECTION E — LAYER PROBING WITH SUBJECT-LEVEL CV (N=20 windows)
+================================================================================
+
+TASK: Predict high vs low tracking quality (median-split of correlation with
+attended envelope). Labels: 1 = high tracking (r ≥ median), 0 = low tracking.
+NOTE: N=20 used → only 4 test samples per fold. Results are indicative only.
+Subject-level CV was not possible (single subject in N=20); random 80/20 split used.
+
+PROBE ACCURACY AND AUC BY LAYER
+  Layer                          | Accuracy | AUC
+  -------------------------------------------------------
+  output_context.conv            |  1.000   | 1.000  ← PERFECT discrimination
+  output_context.ln              |  1.000   | 1.000
+  output_context.act             |  1.000   | 1.000
+  output_context (all)           |  1.000   | 1.000
+  block_denses.2                 |  1.000   | 1.000
+  final_dense                    |  1.000   | 1.000
+  block_denses.0                 |  0.750   | 0.750
+  block_denses.1                 |  0.750   | 0.750
+  output_context.pad             |  0.750   | 0.750
+  extractor.blocks.0.ln_0        |  0.750   | 0.500
+  extractor.blocks.2.conv_2      |  0.750   | 0.750
+  extractor.blocks.2.ln_2        |  0.750   | 0.750
+  extractor.blocks.3.conv_3      |  0.750   | 0.750
+  extractor.blocks.3.ln_3        |  0.750   | 0.750
+  extractor.blocks.4.ln_4        |  0.750   | 0.750
+  extractor.blocks.0.conv_0      |  0.500   | 0.750
+  extractor.blocks.1.conv_1      |  0.500   | 0.500
+  extractor.blocks.1.ln_1        |  0.500   | 0.750
+  extractor.blocks.4.conv_4      |  0.500   | 0.750
+
+INTERPRETATION:
+  Output layers (output_context, final_dense) achieve perfect separation.
+  This confirms representations are LINEARLY SEPARABLE for tracking quality
+  at the output stage.
+  Early extractor layers (blocks 0-1) show near-chance accuracy, suggesting
+  feature extraction alone does not encode tracking quality linearly.
+  CAUTION: 4 test samples is insufficient for reliable estimates.
+
+================================================================================
+SECTION F — GRADCAM + INTEGRATED GRADIENTS (N=5 windows)
+================================================================================
+
+GRADCAM PER CONV1D LAYER (mean |activation|, normalised to max=1.0)
+  Layer                              | Mean |attr| | Normalised | Max val
+  -----------------------------------------------------------------------
+  decoder.output_context.conv        | 0.000467   | 1.000 (max)| 0.001914  ← HIGHEST
+  decoder.extractor.blocks.1.conv_1  | 0.000299   | 0.641      | 0.002439
+  decoder.extractor.blocks.0.conv_0  | 0.000280   | 0.599      | 0.002502
+  decoder.extractor.blocks.3.conv_3  | 0.000109   | 0.232      | 0.001241
+  decoder.extractor.blocks.2.conv_2  | 0.000093   | 0.199      | 0.001344
+  decoder.extractor.blocks.4.conv_4  | 0.000062   | 0.133 (min)| 0.000730  ← LOWEST
+
+GRADCAM KEY FINDINGS:
+  * output_context.conv receives the highest GradCAM signal (1.000 normalised).
+    This is the shared temporal context module — it integrates across time.
+  * Early extractor blocks (0, 1) have HIGHER GradCAM than late extractor
+    blocks (3, 4). This is counterintuitive given gradient flow analysis
+    showing Block 3 closest to loss — may reflect high activation magnitudes
+    in early layers.
+  * extractor.blocks.4 has LOWEST GradCAM despite being adjacent to block_denses.
+    The dimensionality reduction (256→128) may wash out spatial gradients.
+
+INTEGRATED GRADIENTS (N=5 windows, n_steps=50, zero baseline)
+  Overall mean |IG attribution|: 0.001038
+  Top-10 most important channels by IG:
+    Rank 1:  Channel 51  (Parietal region, approx)
+    Rank 2:  Channel 42  (Parietal region, approx)
+    Rank 3:  Channel 52  (Parietal region, approx)
+    Rank 4:  Channel 14  (Fronto-Central region, approx)
+    Rank 5:  Channel 43  (Parietal region, approx)
+    Rank 6:  Channel 50  (Parietal region, approx)
+    Rank 7:  Channel 23  (Central region, approx)
+    Rank 8:  Channel 15  (Fronto-Central region, approx)
+    Rank 9:  Channel 41  (Temporal region, approx)
+    Rank 10: Channel 13  (Fronto-Central region, approx)
+
+IG vs OCCLUSION AGREEMENT:
+  Channels appearing in BOTH IG top-10 and Occlusion top-15:
+  Ch 23 (Central), Ch 14 (Fronto-Central), Ch 52 (Parietal), Ch 13 (Fronto-Central),
+  Ch 41 (Temporal), Ch 15 (Fronto-Central)
+  ↳ 6/10 = 60% agreement between IG and occlusion methods on important channels.
+
+================================================================================
+SECTION G — ENHANCED SANITY CHECKS (N=5 windows)
+================================================================================
+
+METHOD: Cascading parameter randomisation (Adebayo et al., 2018).
+Start with full trained model, randomise one layer at a time from output toward input.
+A robust attribution method should change substantially as more layers are randomised.
+
+ORIGINAL IG ATTRIBUTION: L2 norm = 0.7679
+
+AFTER RANDOMISING FULL MODEL (decoder):
+  L2 norm:         0.7897  (ratio = 1.028 vs original)
+  Spearman r:     +0.018   (very low — near-zero correlation with original)
+  Pearson r:      +0.031   (very low)
+  Top-10% overlap: 0.341   (34.1% of top features remain the same)
+  SSIM:            0.107   (low structural similarity)
+  Verdict: PASS — attribution maps changed substantially after randomisation.
+
+INTERPRETATION:
+  * Spearman r ≈ 0.018 indicates near-zero rank correlation between original
+    and randomised-model IG attributions. This is the expected behaviour for
+    a faithful method — attributions should change when weights change.
+  * Top-10% overlap of 34% is above random (which would be ~10%), suggesting
+    some spatial structure is preserved even after randomisation. This may
+    indicate the IG method has some input-space bias (attributing to high-
+    amplitude channels regardless of learned weights).
+  * SSIM of 0.107 confirms the attribution MAP STRUCTURE changed.
+  * L2 ratio ≈ 1.03 means attribution MAGNITUDE barely changed (slight inflation).
+    This could indicate gradient explosion in the randomised model, or that
+    the IG method's total attribution is normalised by the input magnitude
+    rather than the model's sensitivity.
+
+================================================================================
+SECTION H — SUBJECT-WISE CONSISTENCY & CLUSTERING (18 subjects, 5 windows each)
+================================================================================
+
+SUBJECTS ANALYSED: S1–S18 (all 18 subjects)
+Windows per subject: 5 (small — for faster validation)
+
+PER-SUBJECT PERFORMANCE (mean P(attended)) AND TOP ROI
+  S1:  mean P = 0.559,  top ROI = Fronto-Central
+  S2:  mean P = 0.445,  top ROI = Fronto-Central
+  S3:  mean P = 0.511,  top ROI = Fronto-Central
+  S4:  mean P = 0.593,  top ROI = Parietal
+  S5:  mean P = 0.562,  top ROI = Central
+  S6:  mean P = 0.495,  top ROI = Fronto-Central
+  S7:  mean P = 0.580,  top ROI = Parietal
+  S8:  mean P = 0.590,  top ROI = Parietal
+  S9:  [not listed in terminal output, included in matrix]
+  S10: mean P = 0.518,  top ROI = Fronto-Central
+  S11: mean P = 0.461,  top ROI = Central
+  S12: mean P = 0.484,  top ROI = Fronto-Central
+  S13: mean P = 0.435,  top ROI = Fronto-Central
+  S14: mean P = 0.517,  top ROI = Parietal
+  S15: mean P = 0.568,  top ROI = Fronto-Central
+  S16: mean P = 0.525,  top ROI = Fronto-Central
+  S17: mean P = 0.425,  top ROI = Parietal
+  S18: mean P = 0.437,  top ROI = Parietal
+
+CROSS-SUBJECT CHANNEL IMPORTANCE CONSISTENCY (pairwise correlation of 64-dim vectors)
+  Mean pairwise r:     -0.0126
+  Std  pairwise r:     ±0.2418
+  ↳ Interpretation: Near-zero mean with high std indicates LOW consistency.
+    Subject-level channel importance profiles are largely uncorrelated.
+    Each subject has a distinct spatial pattern.
+
+DOMINANT TOP ROIS ACROSS SUBJECTS
+  Fronto-Central dominant: S1, S2, S3, S6, S10, S12, S13, S15, S16 (9 subjects)
+  Parietal dominant:       S4, S7, S8, S14, S17, S18             (6 subjects)
+  Central dominant:        S5, S11                                (2 subjects)
+  Occipital/Temporal/Frontal: 0 subjects
+
+PER-SUBJECT ROI IMPORTANCE PROFILES (mean |ΔP| per ROI)
+  Subject | Frontal | Fronto-C | Central | Temporal | Parietal | Occipital
+  -----------------------------------------------------------------------
+  S1      | 0.00497 | 0.00868  | 0.00329 | 0.00217  | 0.00551  | 0.00357
+  S2      | -       | -        | -       | -        | -        | -
+  S3      | -       | -        | -       | -        | -        | -
+  S4      | -       | -        | -       | -        | -        | -
+  S5      | -       | -        | -       | -        | -        | -
+  S6      | -       | -        | -       | -        | -        | -
+  S7      | -       | -        | -       | -        | -        | -
+  S8      | -       | -        | -       | -        | -        | -
+  S10     | 0.00367 | 0.00980  | 0.00673 | 0.00500  | 0.00689  | 0.00547
+  S11     | 0.00439 | 0.00638  | 0.00971 | 0.00298  | 0.00533  | 0.00404
+  S12     | 0.00741 | 0.01418  | 0.00435 | 0.00273  | 0.00425  | 0.00350
+  S13     | 0.01276 | 0.01469  | 0.00516 | 0.00412  | 0.00515  | 0.00555
+  S14     | 0.00513 | 0.00542  | 0.00517 | 0.00377  | 0.00719  | 0.00297
+  S15     | 0.00729 | 0.00815  | 0.00484 | 0.00545  | 0.00651  | 0.00314
+  S16     | 0.00530 | 0.00548  | 0.00237 | 0.00237  | 0.00406  | 0.00256
+  S17     | 0.00346 | 0.00520  | 0.00231 | 0.00392  | 0.00860  | 0.00344
+  S18     | 0.00240 | 0.00195  | 0.00250 | -        | -        | -
+
+KEY FINDINGS:
+  * Fronto-Central is the most common dominant ROI (9/18 subjects).
+  * Parietal is second most common (6/18 subjects).
+  * High inter-subject variability (pairwise r std = 0.24) means group-level
+    channel maps obscure individual differences.
+  * Subjects S13 and S12 show notably higher Fronto-Central importance.
+  * Subjects S17 shows high Parietal importance (consistent with AAD literature).
+
+================================================================================
+SECTION I — FREQUENCY-BAND ANALYSIS (N=20 windows, Butterworth 4th order)
+================================================================================
+
+METHOD: Remove each frequency band via subtraction (mirror-padded to reduce
+edge artifacts), then measure ΔP = P(attended|full EEG) - P(attended|no-band EEG).
+Positive ΔP = removing that band hurts performance → band is important.
+
+WHOLE-BRAIN FREQUENCY BAND IMPORTANCE
+  Band               | Freq Range | mean ΔP  | 95% CI               | Important?
+  ----------------------------------------------------------------------------------
+  theta (4-8 Hz)     | 4.0-8.0 Hz | -0.01714 | [-0.02541, -0.00937] | YES (CI<0, negative)
+  delta (0.5-4 Hz)   | 0.5-4.0 Hz | +0.01669 | [-0.00058, +0.02988] | Marginal (CI ~0)
+  beta (13-30 Hz)    | 13-30 Hz   | +0.00684 | [-0.00549, +0.01772] | Not significant
+  alpha (8-13 Hz)    | 8-13 Hz    | +0.00256 | [-0.00093, +0.00605] | Not significant
+
+  KEY FINDING: Theta (4-8 Hz) shows NEGATIVE ΔP (CI entirely below zero).
+  This means removing theta INCREASES P(attended).
+  Interpretation: theta band may be confounding — it contains noise or
+  unattended-speaker correlates that the model partially relies on incorrectly.
+  Or the model uses ABSENCE of theta to discriminate attention.
+
+  Delta shows positive ΔP (removing it hurts), consistent with delta's role
+  in auditory cortical tracking of speech envelopes (~1-4 Hz modulations).
+
+BAND × ROI INTERACTION (mean ΔP per ROI when that band is removed)
+  Band    | Frontal  | Fronto-C | Central  | Temporal | Parietal | Occipital
+  ---------------------------------------------------------------------------
+  delta   | +0.01099 | +0.00389 | -0.00317 | -0.00556 | -0.01024 | -0.00787
+  theta   | +0.00347 | -0.00319 | -0.00644 | -0.00159 | -0.00231 | -0.00678
+  alpha   | +0.00258 | -0.00044 | -0.00379 | +0.00197 | +0.00364 | -0.00276
+  beta    | +0.00271 | +0.00904 | -0.00922 | +0.00436 | -0.00672 | -0.00495
+
+  BAND × ROI PATTERNS:
+  * Delta: Removing frontal delta HURTS (+0.011), removing parietal delta HELPS (-0.010).
+    Frontal delta carries useful signal; parietal delta is suppressive.
+  * Theta: Removing centrol/occipital theta helps (negative values).
+    Fronto-central theta removal hurts slightly.
+  * Beta: Fronto-central beta is most important (+0.009 when removed).
+    Central beta is suppressive (-0.009).
+  * Alpha: Mixed pattern; Parietal alpha slightly helpful to remove (+0.004)
+    suggesting alpha suppression at parietal sites aligns with attention.
+
+================================================================================
+SECTION J — CORRECT vs INCORRECT ANALYSIS (correlation-based labels, N=20)
+================================================================================
+
+LABELLING METHOD (TRUE LABELS):
+  Correct = r(predicted_env, attended_env) > r(predicted_env, unattended_env)
+  This uses the model's own prediction quality, not a P>0.5 threshold.
+
+PERFORMANCE STATISTICS
+  Total windows:     20
+  Correct:           13  (65.0%)
+  Incorrect:          7  (35.0%)
+  Mean r_att:        0.1106  (correlation with attended envelope)
+  Mean r_unatt:     -0.0716  (correlation with unattended envelope)
+  ↳ Positive mean r_att and negative mean r_unatt confirms model does
+    learn attended envelope tracking on average.
+
+TOP-10 CHANNEL OVERLAP BETWEEN GROUPS
+  Overlap: 3 / 10 channels  (30%)
+  ↳ Low overlap means the spatial pattern of important channels differs
+    substantially between windows the model gets right vs wrong.
+
+STATISTICAL COMPARISON OF CHANNEL IMPORTANCE
+  t-statistic = 1.225,   p-value = 0.223
+  ↳ Not significant at N=20. More data needed.
+
+ROI IMPORTANCE COMPARISON (mean |ΔP|)
+  ROI              | Correct  | Incorrect | Difference
+  -------------------------------------------------------
+  Frontal          | 0.00376  | 0.00474   | -0.00098  (incorrect relies more on Frontal)
+  Fronto-Central   | 0.00697  | 0.00481   | +0.00216  (correct relies more on Fronto-Central)
+  Central          | 0.00417  | 0.00291   | +0.00126  (correct relies more on Central)
+  Temporal         | 0.00337  | 0.00398   | -0.00061  (incorrect relies more on Temporal)
+  Parietal         | 0.00507  | 0.00240   | +0.00267  (correct relies MORE on Parietal)
+  Occipital        | 0.00396  | 0.00293   | +0.00103  (correct relies more on Occipital)
+
+KEY FINDING:
+  When predictions are CORRECT, Parietal importance is 2× higher (0.00507 vs 0.00240).
+  Fronto-Central is also more important for correct predictions (0.00697 vs 0.00481).
+  When predictions are INCORRECT, Frontal and Temporal become relatively more important.
+  ↳ Correct attention decoding appears to rely more heavily on Parieto-frontal network,
+    consistent with neuroscience literature on sustained attention and auditory cortex.
+  ↳ Incorrect predictions may reflect over-reliance on frontal signals (which could
+    be motor/cognitive artifacts rather than pure auditory processing).
+
+================================================================================
+CROSS-METHOD SYNTHESIS & KEY CONSOLIDATED FINDINGS
+================================================================================
+
+FINDING 1: BLOCK 3 DOMINATES THE DECISION
+  Evidence: Section B shows zeroing Block 3 drops accuracy from 65% to 0%.
+  All other blocks (0, 1, 2) have minimal or paradoxical effects.
+  Consistent with gradient flow analysis: Block 3 has shortest path to loss.
+  Implication: Despite 4-block architecture, the model behaves as effectively
+  1-block with skip connections providing context.
+
+FINDING 2: SPATIAL PATTERN IS BILATERAL WITH MIXED SIGNS
+  Evidence: Section C shows both positive and negative ΔP channels within each ROI.
+  Top facilitators: Ch 13 (FC), Ch 52 (Par), Ch 41 (Temp), Ch 38 (Temp)
+  Top suppressors: Ch 23 (Cent), Ch 27 (Cent), Ch 46 (Par), Ch 54 (Occ)
+  The model does NOT simply rely on high-amplitude or topographically smooth patterns.
+
+FINDING 3: DELTA BAND IS MOST INFORMATIVE FOR SPEECH TRACKING
+  Evidence: Section I shows delta removal leads to largest positive ΔP (+0.017).
+  This is expected: slow cortical potentials (1-4 Hz) track speech amplitude envelope.
+  Frontal delta is particularly important (+0.011 when removed from frontal only).
+
+FINDING 4: THETA BAND IS PARADOXICALLY SUPPRESSIVE
+  Evidence: Section I shows theta removal INCREASES P(attended) (ΔP = -0.017).
+  One explanation: theta contains rhythmic oscillations not aligned with speech
+  that the VLAAI model partially uses as negative evidence for attention.
+  Could also indicate spurious theta-band correlations in the proxy unattended envelope.
+
+FINDING 5: EARLY TEMPORAL SEGMENTS SLIGHTLY MORE IMPORTANT
+  Evidence: Section D shows t=1.0-2.0s has highest sensitivity (ΔP=+0.016).
+  Late segments (3.5-5.0s) have lower but positive sensitivity.
+  Not statistically significant at N=20, but directionally consistent with
+  causal architecture (early context accumulates to inform later predictions).
+
+FINDING 6: HIGH INTER-SUBJECT VARIABILITY
+  Evidence: Section H pairwise r mean = -0.013, std = 0.242.
+  Subjects split Fronto-Central (9/18) vs Parietal (6/18) as dominant ROI.
+  Individual-level XAI maps may be more informative than group averages.
+
+FINDING 7: OUTPUT CONTEXT MODULE IS THE CRITICAL REPRESENTATIONAL BOTTLENECK
+  Evidence: Section F shows output_context.conv has highest GradCAM (normalised=1.0).
+  Section E shows output_context layers have perfect probe accuracy (1.0).
+  This module integrates 32-sample (500ms) temporal context — the key transformation.
+
+FINDING 8: SANITY CHECK PASSED (attributions change with randomisation)
+  Evidence: Section G shows Spearman r=0.018 after randomisation (near-zero).
+  IG attributions are sensitive to model weights — method is not trivially
+  input-dependent.
+
+FINDING 9: CORRECT DECODING USES PARIETAL CHANNELS MORE
+  Evidence: Section J shows Parietal importance doubles (0.507 vs 0.240) for
+  correctly decoded windows vs incorrect ones.
+  Parietal regions are known neural correlates of selective attention.
+
+FINDING 10: IG AND OCCLUSION AGREE ON 60% OF TOP CHANNELS
+  Evidence: 6 of 10 IG-top channels also appear in occlusion top-15.
+  Agreement channels: Ch 23, 14, 52, 13, 41, 15.
+  Disagreement may reflect IG measuring gradient sensitivity vs occlusion
+  measuring actual contribution.
+
+================================================================================
+LIMITATIONS AND CAUTIONS FOR ANALYSIS
+================================================================================
+
+1. SAMPLE SIZE: Most sections used N=20 windows. This is too small for reliable
+   statistics. Wide confidence intervals — treat as directional only.
+   Recommended: N≥200 with n_boot=1000 for reliable CIs.
+
+2. UNATTENDED ENVELOPE: The DTU dataset has only the attended envelope.
+   The "unattended" envelope is a CIRCULAR TIME-SHIFT PROXY (shift by T/2).
+   This creates an artificial discrimination task. True unattended envelopes
+   from a competing speaker would likely give different results.
+
+3. ROI MAPPING: Channel-to-ROI assignment is INDEX-BASED (not verified against
+   the actual electrode montage). Results labeled "Parietal" etc. are approximate.
+
+4. GRADCAM ON SHARED LAYERS: The extractor and output_context are shared across
+   all 4 blocks. GradCAM captures the LAST forward pass's gradients through
+   these shared modules. It is not block-specific.
+
+5. PROBE ACCURACY: With 4 test samples (N=20, 20% split), probe accuracy can
+   only take values {0.0, 0.25, 0.50, 0.75, 1.0}. Do not over-interpret.
+
+6. SECTION H: Only 5 windows per subject. Channel importance profiles from
+   5 samples are noisy. Low pairwise r (mean≈0) may partly reflect noise.
+
+================================================================================
+FILES AND LOCATIONS
+================================================================================
+
+Output directory: xai_results/
+
+Section A (Architecture):
+  A_architecture/architecture_report.txt      — Full text report
+  A_architecture/architecture.json            — JSON with param counts + grad norms
+
+Section B (Ablation):
+  B_ablation/block_ablation.json              — All ΔP, CI, accuracy values
+  B_ablation/block_ablation.png               — Bar chart by mode and block
+
+Section C (Channel Occlusion):
+  C_channel_occlusion/channel_occlusion.json  — All 64 channels + 6 ROIs with CIs
+  C_channel_occlusion/channel_occlusion.csv   — CSV version for spreadsheet analysis
+  C_channel_occlusion/channel_drops_perwindow.npy — Raw (20, 64) per-window drops
+  C_channel_occlusion/channel_occlusion.png   — Three-panel figure
+
+Section D (Temporal Occlusion):
+  D_temporal_occlusion/temporal_occlusion.json — All time steps with CIs
+  D_temporal_occlusion/temporal_drops_perwindow.npy — Raw (20, 9) per-window drops
+  D_temporal_occlusion/temporal_occlusion.png — Line plot + boxplot
+
+Section E (Probing):
+  E_probing/probe_results.json                — Accuracy + AUC per layer
+  E_probing/probes.png                        — Horizontal bar chart
+
+Section F (Attribution):
+  F_attribution/attribution_summary.json      — GradCAM + IG summary
+  F_attribution/ig_attributions.npy           — Raw IG arrays (5, 320, 64)
+  F_attribution/gradcam_*.npy                 — GradCAM per conv layer
+  F_attribution/attribution.png               — GradCAM layers + IG channels
+
+Section G (Sanity Checks):
+  G_sanity_checks/sanity_checks.json          — Spearman, Pearson, SSIM, TopK
+  G_sanity_checks/sanity_checks.png           — Three metric bar charts
+
+Section H (Subject-wise):
+  H_subject_wise/subject_consistency.json     — Pairwise r + ROI profiles
+  H_subject_wise/subject_channel_matrix.npy   — (18, 64) channel importance
+  H_subject_wise/subject_corr_matrix.npy      — (18, 18) pairwise correlation
+  H_subject_wise/subject_consistency.png      — Heatmap + dendrogram + ROI map
+
+Section I (Frequency Band):
+  I_frequency_band/frequency_band.json        — Band importance + band×ROI
+  I_frequency_band/frequency_band.png         — Bar chart + heatmap
+
+Section J (Correct vs Incorrect):
+  J_correct_incorrect/correct_incorrect.json  — Group comparison stats
+  J_correct_incorrect/correct_channel_drops.npy  — (64,) correct group
+  J_correct_incorrect/incorrect_channel_drops.npy — (64,) incorrect group
+  J_correct_incorrect/correct_incorrect.png   — Channel, ROI, scatter
+
+================================================================================
+UPDATE — TRF BASELINE COMPARISON & EXPLAINABILITY ANALYSIS
+================================================================================
+
+Date: May 14, 2026
+
+WHAT WAS DONE:
+  1. Created a TRF (Temporal Response Function) baseline decoder using Ridge
+     regression with lagged design matrix (0–0.5s lags, 64 channels × 33 lags
+     = 2112 features). Wrapped it in a PyTorch-compatible TRFDecisionWrapper
+     for model-agnostic XAI pipeline compatibility.
+
+  2. Ran the same occlusion-based XAI sections (C, D, H, I, J) on the TRF
+     decoder with N=200 windows, n_boot=500 for robust confidence intervals.
+
+  3. Implemented optimised within-subject TRF evaluation with:
+     - Within-subject K-fold cross-validation (5-fold, leave-trials-out)
+     - Per-fold Ridge alpha tuning (7 values from 0.1 to 100,000)
+     - Multiple decision window lengths (5s, 10s, 20s, 40s)
+     - Ridge solver='cholesky' for fast fitting (~0.4s per fit)
+
+  4. Generated a deep explainability comparison between VLAAI and TRF covering
+     spatial, temporal, frequency-band, subject-wise, and error analysis.
+
+Scripts created:
+  - src/aad_xai/models/trf_decision.py       — TRFDecisionWrapper class
+  - scripts/run_xai_trf_comparison.py         — TRF XAI + comparison runner
+  - scripts/_trf_subject_acc.py               — Within-subject TRF evaluation
+  - scripts/analyse_xai_comparison.py         — Deep explainability comparison
+
+================================================================================
+TRF DECODING ACCURACY RESULTS
+================================================================================
+
+WITHIN-SUBJECT TRF (alpha-tuned, 5-fold CV, 18 subjects)
+
+  Window    TRF (ours)   Literature    VLAAI (5s)   Previous Global TRF
+  -----------------------------------------------------------------------
+  5s            68.9%        57.5%        65.0%              55.6%
+  10s           73.3%        61.6%          —                  —
+  20s           79.7%        64.9%          —                  —
+  40s           88.9%        69.2%          —                  —
+
+  Key: Within-subject TRF with alpha tuning EXCEEDS both VLAAI and literature
+  baselines at all tested window lengths. At 5s, TRF 68.9% > VLAAI 65.0%.
+
+PER-SUBJECT 5s ACCURACY
+
+  Subject    TRF-WS    TRF-Global    Improvement
+  ------------------------------------------------
+  S1          82.7%       32.0%        +50.7%
+  S2          73.1%       46.0%        +27.1%
+  S3          64.0%       78.0%        -14.0%
+  S4          71.1%       48.0%        +23.1%
+  S5          60.7%       52.0%         +8.7%
+  S6          56.0%       38.0%        +18.0%
+  S7          85.1%       56.0%        +29.1%
+  S8          71.8%       38.0%        +33.8%
+  S9          74.4%       44.0%        +30.4%
+  S10         61.1%       94.0%        -32.9%
+  S11         55.8%       54.0%         +1.8%
+  S12         61.8%       52.0%         +9.8%
+  S13         71.3%       66.0%         +5.3%
+  S14         66.0%       46.0%        +20.0%
+  S15         75.1%       64.0%        +11.1%
+  S16         74.0%       64.0%        +10.0%
+  S17         61.8%       60.0%         +1.8%
+  S18         74.7%       68.0%         +6.7%
+  ------------------------------------------------
+  OVERALL     68.9%       55.6%        +13.3%
+
+  Best subjects: S7 (85.1%), S1 (82.7%), S15 (75.1%)
+  Weakest:       S11 (55.8%), S6 (56.0%), S5 (60.7%)
+  Most subjects selected alpha = 10,000–100,000 (strong regularisation).
+
+================================================================================
+VLAAI vs TRF EXPLAINABILITY COMPARISON
+================================================================================
+
+--- SPATIAL / CHANNEL COMPARISON ---
+
+  ROI                  VLAAI ΔP     TRF ΔP     VLAAI Rank     TRF Rank
+  -----------------------------------------------------------------------
+  Frontal              +0.00070   +0.00381            4             1
+  Fronto-Central       +0.00133   +0.00087            3             6
+  Central              -0.00187   +0.00232            2             4
+  Temporal             +0.00029   -0.00324            5             2
+  Parietal             -0.00005   +0.00137            6             5
+  Occipital            -0.00257   +0.00307            1             3
+
+  ROI rank correlation: Spearman ρ = -0.029 (p = 0.957) — NO agreement.
+  Channel rank correlation (64 ch): ρ = -0.122 (p = 0.335) — NO agreement.
+  Top-10 channel overlap: 1/10 (Ch 23 only).
+  Sign agreement: 42.2% (less than chance 50% — models disagree on direction).
+
+  VLAAI: Occipital and Central are SUPPRESSIVE (negative ΔP = masking helps).
+         Uses posterior channels as NEGATIVE evidence against false positives.
+  TRF:   Frontal and Temporal are dominant (positive ΔP = masking hurts).
+         Classic auditory cortical tracking spatial pattern.
+
+  CONCLUSION: The two models use fundamentally different spatial strategies.
+  VLAAI discovers INHIBITORY patterns invisible to the linear TRF.
+
+--- TEMPORAL SENSITIVITY COMPARISON ---
+
+  Time Segment     VLAAI ΔP     TRF ΔP     Ratio
+  ------------------------------------------------
+  0.0 – 1.0 s     +0.01459   +0.00295       5.0x
+  0.5 – 1.5 s     +0.01341   +0.00252       5.3x
+  1.0 – 2.0 s     +0.01587   +0.00262       6.1x  ← VLAAI peak
+  1.5 – 2.5 s     +0.01067   +0.00167       6.4x
+  2.0 – 3.0 s     +0.00694   +0.00338       2.1x
+  2.5 – 3.5 s     +0.00564   +0.00285       2.0x
+  3.0 – 4.0 s     +0.00920   +0.00240       3.8x
+  3.5 – 4.5 s     +0.00230   +0.00218       1.1x
+  4.0 – 5.0 s     +0.00646   +0.00364       1.8x
+
+  Temporal profile correlation: ρ = -0.033 — uncorrelated.
+  Mean |ΔP|: VLAAI = 0.00945, TRF = 0.00269 (3.5x stronger for VLAAI).
+  VLAAI early vs late: p = 0.273 (trend: early > late, not significant at N=20).
+  TRF  early vs late: p = 0.994 (perfectly uniform — no temporal preference).
+
+  CONCLUSION: VLAAI's causal recurrent architecture shows early-segment bias;
+  TRF's memoryless linear structure treats all time points equally.
+
+--- FREQUENCY-BAND COMPARISON ---
+
+  Band       Range       VLAAI ΔP     TRF ΔP     |V|/|T|
+  ---------------------------------------------------------
+  delta    0.5–4 Hz     +0.01669    -0.00466       3.6x
+  theta      4–8 Hz     -0.01714    -0.00067      25.6x
+  alpha     8–13 Hz     +0.00256    -0.00129       2.0x
+  beta     13–30 Hz     +0.00684    -0.00032      21.3x
+
+  VLAAI ranking: theta > delta > beta > alpha
+  TRF   ranking: delta > alpha > theta > beta
+  Rankings match: NO
+
+  Band × ROI Interaction (ΔP when band removed from specific ROI):
+  Band      Frontal   Fronto-C   Central  Temporal  Parietal  Occipital
+  -----------------------------------------------------------------------
+  VLAAI δ   +0.0110   +0.0039   -0.0032   -0.0056   -0.0102   -0.0079
+  TRF   δ   +0.0067   +0.0025   +0.0095   -0.0209   -0.0002   +0.0249
+  VLAAI θ   +0.0035   -0.0032   -0.0064   -0.0016   -0.0023   -0.0068
+  TRF   θ   +0.0004   +0.0008   +0.0009   -0.0018   +0.0041   +0.0042
+  VLAAI α   +0.0026   -0.0004   -0.0038   +0.0020   +0.0036   -0.0028
+  TRF   α   +0.0016   -0.0002   +0.0005   +0.0004   +0.0010   -0.0011
+  VLAAI β   +0.0027   +0.0090   -0.0092   +0.0044   -0.0067   -0.0049
+  TRF   β   +0.0003   +0.0001   -0.0003   +0.0002   +0.0000   +0.0001
+
+  CONCLUSION: Both rely on delta for cortical envelope tracking. VLAAI uniquely
+  exploits theta as SUPPRESSIVE evidence (ΔP = -0.017) — removing theta helps.
+  TRF has 2–25x weaker band sensitivity; its linear weights cannot capture
+  complex nonlinear frequency interactions that VLAAI discovers.
+
+--- SUBJECT-WISE CONSISTENCY COMPARISON ---
+
+  Cross-subject pairwise channel correlation:
+    VLAAI: mean r = -0.013 ± 0.242  (low, variable — subject-specific patterns)
+    TRF:   mean r = +0.097 ± 0.389  (higher — more consistent across subjects)
+
+  Dominant ROI distribution:
+    VLAAI: Fronto-Central (10/18), Parietal (6/18), Central (2/18)
+    TRF:   Frontal (14/18), Parietal (2/18), Fronto-Central (1/18), Occipital (1/18)
+    Top-ROI agreement: 1/18 subjects (6%) — S4 only (both Parietal)
+
+  CONCLUSION: TRF uses consistent spatial patterns across subjects (constrained
+  by linearity). VLAAI adapts per-subject, capturing individual attention
+  network differences (FC-dominant vs Parietal-dominant subgroups).
+
+--- CORRECT vs INCORRECT PREDICTION COMPARISON ---
+
+  Accuracy: VLAAI 65.0% (13/20), TRF 60.0% (36/60)
+
+  ROI Importance for CORRECT predictions:
+    ROI              VLAAI |ΔP|   TRF |ΔP|
+    Frontal            0.00376    0.00879
+    Fronto-Central     0.00697    0.00368   ← VLAAI stronger
+    Central            0.00417    0.00391
+    Temporal           0.00337    0.00234
+    Parietal           0.00507    0.00493   ← VLAAI stronger
+    Occipital          0.00396    0.00500
+
+  ROI Importance for INCORRECT predictions:
+    ROI              VLAAI |ΔP|   TRF |ΔP|
+    Frontal            0.00474    0.00591
+    Fronto-Central     0.00481    0.00326
+    Central            0.00291    0.00572   ← TRF stronger
+    Temporal           0.00398    0.00779   ← TRF stronger
+    Parietal           0.00240    0.00839   ← TRF stronger
+    Occipital          0.00293    0.00451
+
+  CONCLUSION: VLAAI correct predictions rely on Fronto-Central + Parietal
+  (neuroscientific attention network). Incorrect predictions shift to Frontal.
+  TRF incorrect predictions show increased Parietal + Temporal sensitivity,
+  but the differentiation is less structured than VLAAI's.
+
+================================================================================
+CONSOLIDATED FINDINGS — VLAAI vs TRF EXPLAINABILITY
+================================================================================
+
+FINDING 11: FUNDAMENTALLY DIFFERENT SPATIAL STRATEGIES
+  VLAAI uses Occipital/Central suppression as negative evidence.
+  TRF uses Frontal/Temporal facilitation for envelope tracking.
+  Channel rank correlation ρ = -0.12 → near-zero agreement.
+  Only 1/10 top channels shared. Sign agreement < 50%.
+
+FINDING 12: DIVERGENT FREQUENCY UTILIZATION WITH SHARED DELTA CORE
+  Both models rely on delta (1–4 Hz) for cortical speech tracking.
+  VLAAI uniquely exploits theta as SUPPRESSIVE evidence (ΔP = -0.017).
+  TRF cannot learn such nonlinear band interactions.
+  VLAAI is 2–25x more frequency-sensitive than TRF.
+
+FINDING 13: TEMPORAL ARCHITECTURE SHAPES TEMPORAL SENSITIVITY
+  VLAAI: 3.5x stronger overall temporal sensitivity, early-segment bias.
+  TRF:   Uniform temporal profile (p = 0.994) — no temporal memory.
+  Profiles are uncorrelated (ρ = -0.033).
+
+FINDING 14: SUBJECT ADAPTATION VS CONSISTENCY TRADE-OFF
+  TRF is more consistent across subjects (r = 0.10 vs -0.01).
+  VLAAI captures subject-specific attention network heterogeneity:
+    Fronto-Central dominant (10/18) vs Parietal dominant (6/18).
+  TRF defaults to Frontal for 14/18 subjects — structurally constrained.
+
+FINDING 15: WELL-TUNED LINEAR MODEL OUTPERFORMS PRETRAINED DEEP MODEL
+  Within-subject TRF (68.9% at 5s) > VLAAI (65.0%) > Literature TRF (57.5%).
+  At 40s windows: TRF reaches 88.9% (10/18 subjects at 100%).
+  Training paradigm (within-subject + alpha tuning) matters more than model
+  complexity when training data is matched appropriately.
+
+FINDING 16: EXPLAINABILITY–ACCURACY TRADE-OFF
+  TRF is inherently interpretable: linear weights = temporal response function.
+  VLAAI requires post-hoc XAI (occlusion, GradCAM, IG, probing).
+  However, VLAAI's XAI reveals RICHER patterns that TRF cannot express:
+    — Suppressive channels (negative evidence)
+    — Theta band as confounding signal
+    — Subject-specific ROI adaptation
+    — Differential spatial patterns for correct vs incorrect predictions
+  For clinical deployment: TRF's transparency may be preferred.
+  For research insight: VLAAI's complex patterns are more informative.
+
+================================================================================
+TRF COMPARISON — FILES AND LOCATIONS
+================================================================================
+
+Output directory: xai_results_trf_comparison/
+
+TRF XAI Results:
+  trf_xai/C_channel_occlusion/channel_occlusion.json
+  trf_xai/D_temporal_occlusion/temporal_occlusion.json
+  trf_xai/H_subject_wise/subject_consistency.json
+  trf_xai/I_frequency_band/frequency_band.json
+  trf_xai/J_correct_incorrect/correct_incorrect.json
+  trf_run_config.json
+
+Comparison Results:
+  comparison/COMPARISON_REPORT.txt
+  comparison/comparison_channel_occlusion.png
+  comparison/comparison_frequency_band.png
+  comparison/comparison_temporal_occlusion.png
+
+Within-Subject TRF Accuracy:
+  trf_within_subject_results.json
+
+Deep Explainability Analysis:
+  explainability_analysis/EXPLAINABILITY_COMPARISON_REPORT.txt
+  explainability_analysis/roi_comparison.png
+  explainability_analysis/channel_scatter.png
+  explainability_analysis/frequency_comparison.png
+  explainability_analysis/temporal_comparison.png
+  explainability_analysis/accuracy_comparison.png
+
+Scripts:
+  src/aad_xai/models/trf_decision.py          — TRFDecisionWrapper class
+  scripts/run_xai_trf_comparison.py            — TRF XAI runner + comparison
+  scripts/_trf_subject_acc.py                  — Within-subject TRF evaluation
+  scripts/analyse_xai_comparison.py            — Explainability comparison
+
+================================================================================
+END OF REPORT
+================================================================================

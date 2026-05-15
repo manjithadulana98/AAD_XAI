@@ -1,0 +1,46 @@
+VLAAI Architecture Summary
+==================================================
+Total parameters: 1,740,289
+Trainable:        1,740,289
+
+Component breakdown:
+  extractor                :  1,575,936 (90.6%)
+  block_denses             :     33,024 (1.9%)
+  output_context           :    131,264 (7.5%)
+  final_dense              :         65 (0.0%)
+
+Shared parameters (extractor + output_context + final_dense): 1,707,265 (98.1%)
+Unique parameters (block_denses ×4):                          33,024 (1.9%)
+
+Forward pass (4 iterations):
+  x = zeros(B, C, T)
+  for i in 0..3:
+    ext_out = extractor(eeg + x)       # shared 5-layer conv stack
+    x = block_denses[i](ext_out)        # unique per-block Linear 128→64
+    x = output_context(x)               # shared causal conv 64→64, k=32
+  out = final_dense(x)                  # Linear 64→1
+
+Key insight: x is OVERWRITTEN each iteration (not accumulated).
+Each block sees eeg + previous_block_output as input.
+
+Gradient flow:
+  Block 3 → shortest path to loss (3 modules: final_dense ← output_context ← block_denses[3])
+  Block 0 → longest path (~24 nonlinearities through 3 additional extractor+dense+context passes)
+  Additive skip (eeg_cf + x) provides gradient highway at each iteration.
+
+Empirical gradient norms (sum loss):
+  final_dense.weight                                : 1945.280640
+  output_context.ln.bias                            : 1037.048706
+  output_context.ln.weight                          : 857.434998
+  final_dense.bias                                  : 640.000000
+  extractor.blocks.1.ln_1.weight                    : 496.825745
+  extractor.blocks.1.ln_1.bias                      : 419.321167
+  block_denses.3.weight                             : 281.109222
+  extractor.blocks.4.ln_4.bias                      : 274.578125
+  extractor.blocks.4.ln_4.weight                    : 248.185394
+  extractor.blocks.3.ln_3.weight                    : 235.438736
+  extractor.blocks.3.ln_3.bias                      : 231.896561
+  output_context.conv.weight                        : 210.484787
+  extractor.blocks.2.ln_2.bias                      : 163.933823
+  extractor.blocks.4.conv_4.weight                  : 158.093491
+  extractor.blocks.1.conv_1.weight                  : 158.042908

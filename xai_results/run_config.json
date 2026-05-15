@@ -1,0 +1,11 @@
+{
+  "seed": 42,
+  "n_boot": 50,
+  "max_samples": 20,
+  "n_windows": 20,
+  "n_subjects": 1,
+  "sections": [
+    "H"
+  ],
+  "device": "cpu"
+}

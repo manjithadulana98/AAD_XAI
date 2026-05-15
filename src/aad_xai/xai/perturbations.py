@@ -17,6 +17,15 @@ def suppress_lag_range(eeg: np.ndarray, sfreq: float, tmin_s: float, tmax_s: flo
     return x
 
 def remove_channel_group(eeg: np.ndarray, ch_idx: list[int]) -> np.ndarray:
+    """Zero out a group of channels. Supports (T, C) and (B, T, C) inputs."""
     x = eeg.copy()
-    x[ch_idx, :] = 0.0
+    if x.ndim == 2:
+        # (T, C)
+        x[:, ch_idx] = 0.0
+    elif x.ndim == 3:
+        # (B, T, C)
+        x[:, :, ch_idx] = 0.0
+    else:
+        # fallback: try last axis
+        x[..., ch_idx] = 0.0
     return x

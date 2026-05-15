@@ -31,7 +31,8 @@ def deletion_curve(
         Confidence values from 0 % masked → 100 % masked.
     """
     model.eval()
-    B, C, T = x.shape
+    B = x.shape[0]
+    n_features = x[0].numel()
     imp = importance.abs().detach().cpu().numpy().reshape(B, -1)
     x0 = x.detach().clone()
 
@@ -40,7 +41,7 @@ def deletion_curve(
     confs: list[float] = []
     for k in range(steps + 1):
         frac = k / steps
-        n_mask = int(round(frac * C * T))
+        n_mask = int(round(frac * n_features))
         xk = x0.clone()
         for i in range(B):
             flat = xk[i].view(-1)
@@ -80,7 +81,8 @@ def insertion_curve(
         Confidence values from 0 % revealed → 100 % revealed.
     """
     model.eval()
-    B, C, T = x.shape
+    B = x.shape[0]
+    n_features = x[0].numel()
     imp = importance.abs().detach().cpu().numpy().reshape(B, -1)
     x0 = x.detach().clone()
 
@@ -89,7 +91,7 @@ def insertion_curve(
     confs: list[float] = []
     for k in range(steps + 1):
         frac = k / steps
-        n_reveal = int(round(frac * C * T))
+        n_reveal = int(round(frac * n_features))
         xk = torch.zeros_like(x0)
         for i in range(B):
             flat_src = x0[i].view(-1)

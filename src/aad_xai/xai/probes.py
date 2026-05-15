@@ -43,6 +43,7 @@ def probe_all_layers(
     device: torch.device | None = None,
     max_samples: int = 2000,
     seed: int = 0,
+    recursive: bool = False,
 ) -> dict[str, float]:
     """Hook every named child of *model* and report linear-probe accuracy.
 
@@ -56,6 +57,11 @@ def probe_all_layers(
     max_samples : int
         Cap the number of samples to avoid memory issues.
     seed : int
+    recursive : bool
+        If True, hook into every ``named_module`` (recursive traversal into
+        nested sub-modules).  If False (default), only immediate
+        ``named_children``.  Use True for deeply nested architectures like
+        VLAAI where important layers are inside sub-blocks.
 
     Returns
     -------
@@ -88,7 +94,10 @@ def probe_all_layers(
                 activations[name] = act
         return hook_fn
 
-    for name, child in model.named_children():
+    iterator = model.named_modules() if recursive else model.named_children()
+    for name, child in iterator:
+        if name == "":
+            continue  # skip the root module itself
         hooks.append(child.register_forward_hook(_make_hook(name)))
 
     # Forward pass to populate activations
