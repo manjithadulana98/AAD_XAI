@@ -1,0 +1,229 @@
+# AADNet Full Training Guide (GCP VM — DTU Dataset)
+# Run every command from ~/training/AAD_XAI unless stated otherwise.
+# Execute steps in order. Each step must succeed before moving to the next.
+
+==============================================================
+STEP 1 — Go to project directory
+==============================================================
+
+cd ~/training/AAD_XAI
+
+
+==============================================================
+STEP 2 — Activate virtual environment
+==============================================================
+
+source .venv/bin/activate
+
+
+==============================================================
+STEP 3 — Install / verify dependencies
+==============================================================
+
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install pyyaml mne-bids pandas seaborn
+
+
+==============================================================
+STEP 4 — Verify CUDA is available  *** DO THIS BEFORE TRAINING ***
+==============================================================
+
+.venv/bin/python -c "import torch; print('CUDA available:', torch.cuda.is_available(), '| Devices:', torch.cuda.device_count())"
+
+Expected output:  CUDA available: True | Devices: 1
+
+If you see "False | 0" go to STEP 4b, otherwise skip to STEP 5.
+
+
+==============================================================
+STEP 4b — Fix PyTorch (only if STEP 4 showed False)
+==============================================================
+
+.venv/bin/pip install torch torchvision torchaudio \
+  --index-url https://download.pytorch.org/whl/cu121
+
+# Verify again
+.venv/bin/python -c "import torch; print('CUDA available:', torch.cuda.is_available(), '| Devices:', torch.cuda.device_count())"
+
+
+==============================================================
+STEP 5 — Verify dataset is present
+==============================================================
+
+export DATASET=$HOME/training/AAD_XAI/aad_data/datasets/DTU
+echo $DATASET
+ls $DATASET/eeg_new | head
+ls $DATASET/Audio   | head
+
+# You should see S1.mat ... S18.mat under eeg_new and audio files under Audio.
+
+
+==============================================================
+STEP 6 — Tune dataloader workers for this machine (g2-standard-8)
+==============================================================
+
+sed -i 's/^\(\s*num_workers:\s*\).*/\16/' external/AADNet/config/config_AADNet_SI_DTU.yml
+sed -i 's/^\(\s*num_workers:\s*\).*/\16/' external/AADNet/config/config_AADNet_SS_DTU.yml
+
+# Confirm
+grep -n "num_workers" external/AADNet/config/config_AADNet_SI_DTU.yml
+grep -n "num_workers" external/AADNet/config/config_AADNet_SS_DTU.yml
+
+
+==============================================================
+STEP 7 — Start AADNet LOSO training (background, with log file)
+==============================================================
+
+mkdir -p logs
+> logs/train.log   # clear any old log
+
+nohup env \
+  DATASET=$HOME/training/AAD_XAI/aad_data/datasets/DTU \
+  OMP_NUM_THREADS=8 \
+  MKL_NUM_THREADS=8 \
+  NUMEXPR_MAX_THREADS=8 \
+  PYTHONUNBUFFERED=1 \
+  $HOME/training/AAD_XAI/.venv/bin/python \
+  external/AADNet/cross_validate_loso.py \
+  -c external/AADNet/config/config_AADNet_SI_DTU.yml \
+  -j LOSO_AADNet_DTU \
+> logs/train.log 2>&1 &
+echo $! > logs/train.pid
+echo "Training started — PID: $(cat logs/train.pid)"
+
+# NOTE: "nohup: ignoring input" printed right after launch is NORMAL.
+# It means stdin was detached. Training is running in the background.
+
+
+==============================================================
+STEP 8 — Verify training actually started (wait 20 s first)
+==============================================================
+
+sleep 20 && cat ~/training/AAD_XAI/logs/train.log
+
+# Check the process is alive
+ps -fp "$(cat logs/train.pid)"
+
+# Check python is running
+pgrep -af "cross_validate_loso.py"
+
+
+==============================================================
+STEP 9 — Monitor live progress (run in a second terminal)
+==============================================================
+
+# Show latest 100 lines once
+tail -n 100 ~/training/AAD_XAI/logs/train.log
+
+# Follow log output in real time
+tail -f ~/training/AAD_XAI/logs/train.log
+
+# If log file does not exist yet, create it and follow
+mkdir -p ~/training/AAD_XAI/logs
+touch ~/training/AAD_XAI/logs/train.log
+tail -f ~/training/AAD_XAI/logs/train.log
+
+# After SSH reconnect, verify both PID and python process
+ps -fp "$(cat ~/training/AAD_XAI/logs/train.pid)"
+pgrep -af "cross_validate_loso.py"
+
+# Watch GPU utilisation every 2 s (open another terminal for this)
+watch -n 2 nvidia-smi
+
+# Monitor CPU + memory
+top
+
+
+==============================================================
+STEP 10 — Stop training early (only if needed)
+==============================================================
+
+kill "$(cat ~/training/AAD_XAI/logs/train.pid)"
+
+
+==============================================================
+STEP 11 — After training finishes: check output files
+==============================================================
+
+cd ~/training/AAD_XAI
+ls -ltr external/AADNet/output | tail -n 30
+ls -ltr external/AADNet/results | tail -n 50
+
+
+==============================================================
+STEP 12 — Get average LOSO accuracy
+==============================================================
+
+# Option A — quick grep from the log
+grep -Ei "average|mean.*acc|acc.*mean|overall.*acc|accuracy" \
+     ~/training/AAD_XAI/logs/train.log | tail -n 30
+
+# Option B — parse result JSON files and print mean per file
+cd ~/training/AAD_XAI
+python - <<'EOF'
+import json, pathlib, statistics
+
+result_dir = pathlib.Path("external/AADNet/results")
+for jf in sorted(result_dir.glob("*.json")):
+    try:
+        data = json.loads(jf.read_text())
+        accs = []
+        for key in ("accuracy", "acc", "test_accuracy", "test_acc"):
+            if key in data:
+                v = data[key]
+                accs = v if isinstance(v, list) else [v]
+                break
+        if accs:
+            print(f"{jf.name}: mean={statistics.mean(accs):.4f}  n={len(accs)}")
+        else:
+            print(f"{jf.name}: keys={list(data.keys())[:8]}")
+    except Exception as e:
+        print(f"{jf.name}: error — {e}")
+EOF
+
+
+==============================================================
+STEP 13 — (Optional) Upload results to GCS bucket
+==============================================================
+
+export ARTIFACTS_BUCKET_URI=gs://aad_data/artifacts/aad_xai
+export RUN_ID=$(date +%Y%m%d_%H%M%S)
+gsutil -m rsync -r external/AADNet/output  ${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_output
+gsutil -m rsync -r external/AADNet/results ${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_results
+gsutil ls ${ARTIFACTS_BUCKET_URI}/${RUN_ID}/**
+
+# If upload fails with 403, re-authenticate first:
+gcloud auth login
+gcloud config set pass_credentials_to_gsutil true
+gcloud auth application-default login
+
+
+==============================================================
+TROUBLESHOOTING
+==============================================================
+
+Problem: log is empty after 30+ seconds
+  Check: cat ~/training/AAD_XAI/logs/train.log
+  Check: pgrep -af "cross_validate_loso.py"
+  Fix:   If no process found, rerun STEP 7.
+
+Problem: CUDA not available (False)
+  Fix:   Run STEP 4b to reinstall PyTorch with CUDA support.
+
+Problem: GPU shows 0% utilisation during training
+  Check: .venv/bin/python -c "import torch; print(torch.cuda.is_available())"
+  Fix:   CUDA may not be available — run STEP 4b then relaunch.
+
+Problem: Training killed / OOM
+  Fix:   Reduce num_workers to 4 in both config YAML files:
+         sed -i 's/num_workers:.*/num_workers: 4/' external/AADNet/config/config_AADNet_SI_DTU.yml
+  Then relaunch from STEP 7.
+
+Problem: Missing module error
+  Fix:   .venv/bin/pip install <module_name>
+  Common: pyyaml, mne-bids, pandas, seaborn
+
+Problem: FileNotFoundError for dataset
+  Check: ls $HOME/training/AAD_XAI/aad_data/datasets/DTU/eeg_new
+  The DATASET env var must point to the folder containing eeg_new/ and Audio/.

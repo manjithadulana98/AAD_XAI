@@ -79,3 +79,79 @@ python -m pip install mne-bids
 #    - terminal A: watch -n 2 nvidia-smi
 #    - terminal B: top
 
+## 13) Run AADNet ONLY with a log file (so tail -f works)
+# Run this from ~/training/AAD_XAI.
+# This skips the aad_xai TRF stage entirely and only runs AADNet LOSO.
+cd ~/training/AAD_XAI
+mkdir -p logs
+nohup bash -lc '
+  source .venv/bin/activate
+  export DATASET=$PWD/aad_data/datasets/DTU
+  export OMP_NUM_THREADS=8
+  export MKL_NUM_THREADS=8
+  export NUMEXPR_MAX_THREADS=8
+  cd external/AADNet
+  python cross_validate_loso.py \
+    -c config/config_AADNet_SI_DTU.yml \
+    -j LOSO_AADNet_DTU
+' > ~/training/AAD_XAI/logs/train.log 2>&1 &
+echo $! > ~/training/AAD_XAI/logs/train.pid
+echo "Training started — PID: $(cat ~/training/AAD_XAI/logs/train.pid)"
+
+## 14) Monitor the running training
+
+# NOTE: "nohup: ignoring input" printed immediately after launch is NORMAL.
+# It means nohup detached stdin. Training is running in the background.
+
+# NOTE: If you ran the nohup command twice by accident, kill the first PID:
+#   kill <first_pid>
+# Then confirm only one python process remains:
+pgrep -af "cross_validate_loso.py"
+
+# Wait ~10 s for Python imports to finish, then check the log:
+sleep 10 && tail -30 ~/training/AAD_XAI/logs/train.log
+
+# Follow the live log output:
+tail -f ~/training/AAD_XAI/logs/train.log
+
+# Check that the process is still alive:
+ps -fp "$(cat ~/training/AAD_XAI/logs/train.pid)"
+
+# If the log is still empty after 15 s, print the full log to check for errors:
+cat ~/training/AAD_XAI/logs/train.log
+
+# Watch GPU utilisation every 2 s (open a second terminal for this):
+watch -n 2 nvidia-smi
+
+## 15) Stop training early (if needed)
+kill "$(cat ~/training/AAD_XAI/logs/train.pid)"
+
+## 16) Get average LOSO accuracy after training completes
+# Quick grep from the log — prints all accuracy/mean lines:
+grep -Ei "average|mean.*acc|acc.*mean|overall.*acc|accuracy" \
+     ~/training/AAD_XAI/logs/train.log | tail -n 30
+
+# Parse JSON result files and print per-window mean accuracy
+cd ~/training/AAD_XAI
+python - <<'EOF'
+import json, pathlib, statistics
+
+result_dir = pathlib.Path("external/AADNet/results")
+for jf in sorted(result_dir.glob("*.json")):
+    try:
+        data = json.loads(jf.read_text())
+        accs = []
+        # try common key patterns in AADNet result files
+        for key in ("accuracy", "acc", "test_accuracy", "test_acc"):
+            if key in data:
+                v = data[key]
+                accs = v if isinstance(v, list) else [v]
+                break
+        if accs:
+            print(f"{jf.name}: mean={statistics.mean(accs):.4f}  n={len(accs)}")
+        else:
+            print(f"{jf.name}: keys={list(data.keys())[:8]}")
+    except Exception as e:
+        print(f"{jf.name}: error — {e}")
+EOF
+
