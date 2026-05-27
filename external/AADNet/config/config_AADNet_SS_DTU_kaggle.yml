@@ -1,5 +1,5 @@
 # AADNet SS (Subject-Specific) config — Kaggle T4 GPU
-# Dataset: /kaggle/input/datasets/dulanamanjitha/aad-xai-artifacts
+# Dataset: /kaggle/input/datasets/dulanamanjitha/aad-xai-artifacts/datasets/DTU
 # NOTE: Run SI (LOSO) training first to produce pretrained weights.
 #       Split SS across two Kaggle sessions if needed:
 #         Session 1: from_sbj=0, to_sbj=9
@@ -9,8 +9,8 @@ setup:
     trainModel: true
 dataset:
     name: DTUDataset
-    folder: /kaggle/input/datasets/dulanamanjitha/aad-xai-artifacts/eeg_new/
-    stimuli_path: /kaggle/input/datasets/dulanamanjitha/aad-xai-artifacts/Audio
+    folder: /kaggle/input/datasets/dulanamanjitha/aad-xai-artifacts/datasets/DTU/eeg_new/
+    stimuli_path: /kaggle/input/datasets/dulanamanjitha/aad-xai-artifacts/datasets/DTU/Audio
     pre_processed: null
     raw: [S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15, S16, S17, S18]
     all_sbjs: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]

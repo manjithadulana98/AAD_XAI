@@ -40,7 +40,7 @@ if torch.cuda.is_available():
     print(f"GPU count: {torch.cuda.device_count()}")
 
 # Verify DTU dataset accessible via Kaggle input
-DTU_PATH = "/kaggle/input/datasets/dulanamanjitha/aad-xai-artifacts"
+DTU_PATH = "/kaggle/input/datasets/dulanamanjitha/aad-xai-artifacts/datasets/DTU"
 eeg_dir = os.path.join(DTU_PATH, "eeg_new")
 audio_dir = os.path.join(DTU_PATH, "Audio")
 
