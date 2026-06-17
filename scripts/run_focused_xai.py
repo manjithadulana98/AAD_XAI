@@ -1049,6 +1049,348 @@ def run_roi_analysis(combined_channels, occ_pw, perm_pw, n_boot, seed, out_dir, 
 
 
 # ══════════════════════════════════════════════════════════════════════
+# SECTION G — Subject Specificity Analysis
+# ══════════════════════════════════════════════════════════════════════
+
+def run_subject_specificity_analysis(combined_channels, ch_matrix, out_dir):
+    """Per-channel subject specificity metrics and correlation with importance features.
+
+    Metrics computed per channel:
+      - subj_mean / subj_std  : mean and std of per-subject occlusion drops
+      - subject_cv            : coefficient of variation (std / |mean|) — high = subject-specific
+      - subject_agree_frac    : fraction of subjects whose sign matches the group sign
+                                (already captured in combined_channels["subject_stability_frac"])
+
+    Correlations (Pearson r):
+      - subject_agree_frac  vs  |occ|, |perm|, IG importance, combined score
+      - cross-subject std    vs  |occ|, |perm|, IG importance, combined score
+    """
+    print("\n" + "=" * 70)
+    print("SECTION G: SUBJECT SPECIFICITY & FEATURE CORRELATION")
+    print("=" * 70)
+
+    if ch_matrix.shape[0] < 2:
+        print("  Need >=2 subjects for specificity analysis. Skipping.")
+        return {}, []
+
+    n_subjects = ch_matrix.shape[0]
+    ch_by_idx = {c["channel"]: c for c in combined_channels}
+
+    # ── Per-channel specificity metrics ──────────────────────────
+    ch_spec = []
+    for ch in range(64):
+        col = ch_matrix[:, ch]
+        subj_mean = float(col.mean())
+        subj_std = float(col.std())
+        abs_mean = abs(subj_mean)
+        cv = float(subj_std / abs_mean) if abs_mean > 1e-10 else float("nan")
+
+        cinfo = ch_by_idx.get(ch, {})
+        ch_spec.append({
+            "channel": ch,
+            "electrode_name": cinfo.get("electrode_name", f"Ch{ch}"),
+            "roi": cinfo.get("roi", "Unknown"),
+            "subj_mean": subj_mean,
+            "subj_std": subj_std,
+            "subj_range": float(col.max() - col.min()),
+            "subject_cv": cv,
+            "subject_agree_frac": cinfo.get("subject_stability_frac", 0.0),
+            "occ_score": cinfo.get("occ_score", 0.0),
+            "perm_score": cinfo.get("perm_score", 0.0),
+            "ig_importance": cinfo.get("ig_importance", 0.0),
+            "combined_score": cinfo.get("combined_score", 0.0),
+            "robust_significant": cinfo.get("robust_significant", False),
+        })
+
+    # ── Build feature arrays ──────────────────────────────────────
+    occ_abs = np.array([abs(r["occ_score"]) for r in ch_spec])
+    perm_abs = np.array([abs(r["perm_score"]) for r in ch_spec])
+    ig_imp = np.array([r["ig_importance"] for r in ch_spec])
+    comb_score = np.array([r["combined_score"] for r in ch_spec])
+    agree_arr = np.array([r["subject_agree_frac"] for r in ch_spec])
+    std_arr = np.array([r["subj_std"] for r in ch_spec])
+    cv_arr_raw = np.array([r["subject_cv"] for r in ch_spec])
+    cv_arr = np.where(np.isfinite(cv_arr_raw), cv_arr_raw, 0.0)
+    electrode_names = [r["electrode_name"] for r in ch_spec]
+
+    # ── Per-subject Spearman ρ vs group mean ──────────────────────
+    from scipy.stats import spearmanr as _spearmanr
+    group_mean_profile = ch_matrix.mean(axis=0)   # shape (64,)
+    per_subj_rho = []
+    for _i in range(n_subjects):
+        _rho, _ = _spearmanr(ch_matrix[_i, :], group_mean_profile)
+        per_subj_rho.append(float(_rho) if np.isfinite(_rho) else 0.0)
+    mean_subj_rho = float(np.mean(per_subj_rho))
+    std_subj_rho  = float(np.std(per_subj_rho))
+
+    def safe_corr(x, y):
+        mask = np.isfinite(x) & np.isfinite(y)
+        if mask.sum() < 3:
+            return float("nan")
+        return float(np.corrcoef(x[mask], y[mask])[0, 1])
+
+    corr_results = {
+        "agree_frac_vs_occ_abs": safe_corr(agree_arr, occ_abs),
+        "agree_frac_vs_perm_abs": safe_corr(agree_arr, perm_abs),
+        "agree_frac_vs_ig": safe_corr(agree_arr, ig_imp),
+        "agree_frac_vs_combined": safe_corr(agree_arr, comb_score),
+        "subj_std_vs_occ_abs": safe_corr(std_arr, occ_abs),
+        "subj_std_vs_perm_abs": safe_corr(std_arr, perm_abs),
+        "subj_std_vs_ig": safe_corr(std_arr, ig_imp),
+        "subj_std_vs_combined": safe_corr(std_arr, comb_score),
+        "cv_vs_occ_abs": safe_corr(cv_arr, occ_abs),
+        "cv_vs_perm_abs": safe_corr(cv_arr, perm_abs),
+        "cv_vs_ig": safe_corr(cv_arr, ig_imp),
+        "cv_vs_combined": safe_corr(cv_arr, comb_score),
+    }
+
+    # ── Cross-subject inter-subject correlation matrix ────────────
+    if n_subjects >= 2:
+        corr_mat = np.corrcoef(ch_matrix)
+        triu = corr_mat[np.triu_indices(n_subjects, k=1)]
+        intersubj_r_mean = float(np.nanmean(triu))
+        intersubj_r_std = float(np.nanstd(triu))
+    else:
+        intersubj_r_mean = float("nan")
+        intersubj_r_std = float("nan")
+
+    print(f"\n  n_subjects: {n_subjects}")
+    print(f"  Inter-subject profile correlation: mean r = {intersubj_r_mean:.3f} ± {intersubj_r_std:.3f}")
+    print(f"\n  Subject agreement fraction vs feature correlations:")
+    print(f"    agree_frac vs |occ|:    r = {corr_results['agree_frac_vs_occ_abs']:+.3f}")
+    print(f"    agree_frac vs |perm|:   r = {corr_results['agree_frac_vs_perm_abs']:+.3f}")
+    print(f"    agree_frac vs IG:       r = {corr_results['agree_frac_vs_ig']:+.3f}")
+    print(f"    agree_frac vs combined: r = {corr_results['agree_frac_vs_combined']:+.3f}")
+    print(f"\n  Cross-subject std vs feature correlations:")
+    print(f"    subj_std vs |occ|:      r = {corr_results['subj_std_vs_occ_abs']:+.3f}")
+    print(f"    subj_std vs |perm|:     r = {corr_results['subj_std_vs_perm_abs']:+.3f}")
+    print(f"    subj_std vs IG:         r = {corr_results['subj_std_vs_ig']:+.3f}")
+    print(f"    subj_std vs combined:   r = {corr_results['subj_std_vs_combined']:+.3f}")
+    print(f"\n  CV vs feature correlations:")
+    print(f"    CV vs |occ|:            r = {corr_results['cv_vs_occ_abs']:+.3f}")
+    print(f"    CV vs |perm|:           r = {corr_results['cv_vs_perm_abs']:+.3f}")
+    print(f"    CV vs IG:               r = {corr_results['cv_vs_ig']:+.3f}")
+    print(f"    CV vs combined:         r = {corr_results['cv_vs_combined']:+.3f}")
+
+    # ── Save outputs ──────────────────────────────────────────────
+    save_json({
+        "n_subjects": n_subjects,
+        "intersubj_r_mean": intersubj_r_mean,
+        "intersubj_r_std": intersubj_r_std,
+        "per_subject_spearman_rho": {
+            f"S{i+1}": per_subj_rho[i] for i in range(n_subjects)
+        },
+        "per_subject_spearman_mean": mean_subj_rho,
+        "per_subject_spearman_std": std_subj_rho,
+        "feature_vs_specificity_correlations": corr_results,
+        "per_channel": ch_spec,
+    }, out_dir / "subject_specificity.json")
+
+    spec_fields = [
+        "channel", "electrode_name", "roi",
+        "subj_mean", "subj_std", "subj_range", "subject_cv",
+        "subject_agree_frac", "occ_score", "perm_score",
+        "ig_importance", "combined_score", "robust_significant",
+    ]
+    with open(out_dir / "subject_specificity.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=spec_fields)
+        w.writeheader()
+        for r in ch_spec:
+            w.writerow({k: r.get(k, "") for k in spec_fields})
+
+    # ── Plots ─────────────────────────────────────────────────────
+
+    # (1) 4-panel correlation scatter
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+
+    # Top-left: subjects × channels heatmap
+    ax = axes[0, 0]
+    vmax = max(np.abs(ch_matrix).max(), 1e-6)
+    im = ax.imshow(ch_matrix, aspect="auto", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+    ax.set_xlabel("Channel Index")
+    ax.set_ylabel("Subject")
+    ax.set_title(f"Per-Subject Importance (occlusion ΔP)  [{n_subjects} subjects]")
+    plt.colorbar(im, ax=ax, label="ΔP", shrink=0.8)
+
+    # Top-right: agree_frac vs |occ|
+    ax = axes[0, 1]
+    colors_scatter = ["#2e7d32" if r["robust_significant"] else "#9e9e9e" for r in ch_spec]
+    ax.scatter(occ_abs, agree_arr, c=colors_scatter, alpha=0.7, s=35)
+    thresh = np.percentile(occ_abs, 85)
+    for r in ch_spec:
+        if abs(r["occ_score"]) >= thresh:
+            ax.annotate(r["electrode_name"], (abs(r["occ_score"]), r["subject_agree_frac"]),
+                        fontsize=6, alpha=0.8)
+    r_val = corr_results["agree_frac_vs_occ_abs"]
+    ax.set_xlabel("|Occlusion ΔP|")
+    ax.set_ylabel("Subject Agreement Fraction")
+    ax.set_title(f"|Occ| vs Subject Agreement  (r = {r_val:.3f})")
+    ax.axhline(0.5, color="k", linewidth=0.7, linestyle="--", alpha=0.5, label="chance=0.5")
+    ax.legend(fontsize=7)
+
+    # Bottom-left: subj_std vs |occ|
+    ax = axes[1, 0]
+    ax.scatter(occ_abs, std_arr, c=colors_scatter, alpha=0.7, s=35)
+    for r in ch_spec:
+        if abs(r["occ_score"]) >= thresh:
+            ax.annotate(r["electrode_name"], (abs(r["occ_score"]), r["subj_std"]),
+                        fontsize=6, alpha=0.8)
+    r_val2 = corr_results["subj_std_vs_occ_abs"]
+    ax.set_xlabel("|Occlusion ΔP|")
+    ax.set_ylabel("Cross-Subject Std")
+    ax.set_title(f"|Occ| vs Subject Variability  (r = {r_val2:.3f})")
+
+    # Bottom-right: combined score vs agree_frac
+    ax = axes[1, 1]
+    ax.scatter(comb_score, agree_arr, c=colors_scatter, alpha=0.7, s=35)
+    thresh_comb = np.percentile(comb_score, 85)
+    for r in ch_spec:
+        if r["combined_score"] >= thresh_comb:
+            ax.annotate(r["electrode_name"], (r["combined_score"], r["subject_agree_frac"]),
+                        fontsize=6, alpha=0.8)
+    r_val3 = corr_results["agree_frac_vs_combined"]
+    ax.set_xlabel("Combined Importance Score")
+    ax.set_ylabel("Subject Agreement Fraction")
+    ax.set_title(f"Combined Score vs Subject Agreement  (r = {r_val3:.3f})")
+    ax.axhline(0.5, color="k", linewidth=0.7, linestyle="--", alpha=0.5)
+
+    for ax in axes.flat:
+        ax.tick_params(labelsize=8)
+    from matplotlib.patches import Patch
+    legend_els = [Patch(facecolor="#2e7d32", label="robust"), Patch(facecolor="#9e9e9e", label="not robust")]
+    fig.legend(handles=legend_els, fontsize=8, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))
+
+    plt.tight_layout(rect=[0, 0.04, 1, 1])
+    plt.savefig(out_dir / "subject_specificity_correlation.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # (2) Correlation summary bar chart
+    labels_bar = [
+        "agree×|occ|", "agree×|perm|", "agree×IG", "agree×comb",
+        "std×|occ|", "std×|perm|", "std×IG", "std×comb",
+        "cv×|occ|", "cv×|perm|", "cv×IG", "cv×comb",
+    ]
+    vals_bar = [
+        corr_results["agree_frac_vs_occ_abs"], corr_results["agree_frac_vs_perm_abs"],
+        corr_results["agree_frac_vs_ig"], corr_results["agree_frac_vs_combined"],
+        corr_results["subj_std_vs_occ_abs"], corr_results["subj_std_vs_perm_abs"],
+        corr_results["subj_std_vs_ig"], corr_results["subj_std_vs_combined"],
+        corr_results["cv_vs_occ_abs"], corr_results["cv_vs_perm_abs"],
+        corr_results["cv_vs_ig"], corr_results["cv_vs_combined"],
+    ]
+    bar_colors = ["#1565c0"] * 4 + ["#c62828"] * 4 + ["#6a1b9a"] * 4
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    bars = ax.bar(range(len(labels_bar)), vals_bar, color=bar_colors, alpha=0.85)
+    ax.set_xticks(range(len(labels_bar)))
+    ax.set_xticklabels(labels_bar, rotation=35, ha="right", fontsize=9)
+    ax.set_ylabel("Pearson r")
+    ax.set_title("Feature vs Subject Specificity — Pearson Correlations\n"
+                 "(blue=agree frac, red=cross-subj std, purple=CV)")
+    ax.axhline(0, color="k", linewidth=0.5)
+    ax.set_ylim(-1, 1)
+    for i, (bar, val) in enumerate(zip(bars, vals_bar)):
+        if np.isfinite(val):
+            ax.text(bar.get_x() + bar.get_width() / 2, val + 0.02 * np.sign(val) if val != 0 else 0.02,
+                    f"{val:.2f}", ha="center", va="bottom" if val >= 0 else "top", fontsize=7)
+    plt.tight_layout()
+    plt.savefig(out_dir / "subject_specificity_correlation_summary.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # (3) Subject-vs-Group heatmap — individual rows + group mean row
+    n_rows_top = n_subjects
+    fig, axes = plt.subplots(
+        2, 1, figsize=(max(16, len(electrode_names) * 0.28), 4 + n_rows_top * 0.35),
+        gridspec_kw={"height_ratios": [n_rows_top, 1.8]},
+    )
+    vmax_hm = max(np.abs(ch_matrix).max(), 1e-6)
+    im_top = axes[0].imshow(ch_matrix, aspect="auto", cmap="RdBu_r",
+                             vmin=-vmax_hm, vmax=vmax_hm)
+    axes[0].set_yticks(range(n_subjects))
+    axes[0].set_yticklabels([f"S{i+1}" for i in range(n_subjects)], fontsize=7)
+    axes[0].set_xticks([])
+    axes[0].set_title("Per-Subject Channel Importance (Occlusion ΔP) vs Group Mean",
+                       fontsize=11, pad=4)
+    plt.colorbar(im_top, ax=axes[0], label="ΔP", shrink=0.8, pad=0.01)
+
+    vmax_gm = max(np.abs(group_mean_profile).max(), 1e-6)
+    im_bot = axes[1].imshow(group_mean_profile.reshape(1, -1), aspect="auto",
+                             cmap="RdBu_r", vmin=-vmax_gm, vmax=vmax_gm)
+    axes[1].set_yticks([0])
+    axes[1].set_yticklabels(["Group\nMean"], fontsize=8)
+    axes[1].set_xticks(range(len(electrode_names)))
+    axes[1].set_xticklabels(electrode_names, rotation=90, fontsize=6)
+    axes[1].set_title("Group Mean Profile", fontsize=9, pad=3)
+    plt.colorbar(im_bot, ax=axes[1], label="ΔP", shrink=0.8, pad=0.01)
+
+    plt.tight_layout()
+    plt.savefig(out_dir / "subject_vs_group_heatmap.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # (4) Per-subject Spearman ρ vs group mean — bar chart
+    sort_rho = np.argsort(per_subj_rho)[::-1]
+    rho_sorted = [per_subj_rho[i] for i in sort_rho]
+    labels_rho  = [f"S{i+1}" for i in sort_rho]
+    bar_colors_rho = ["#1565c0" if v >= 0 else "#c62828" for v in rho_sorted]
+
+    fig, ax = plt.subplots(figsize=(max(8, n_subjects * 0.55), 5))
+    bars = ax.bar(range(len(rho_sorted)), rho_sorted, color=bar_colors_rho, alpha=0.85)
+    ax.set_xticks(range(len(rho_sorted)))
+    ax.set_xticklabels(labels_rho, fontsize=9)
+    ax.set_xlabel("Subject")
+    ax.set_ylabel("Spearman ρ vs Group Mean Profile")
+    ax.set_title(
+        f"Per-Subject Profile Similarity to Group Mean\n"
+        f"Mean ρ = {mean_subj_rho:.3f} ± {std_subj_rho:.3f}  "
+        f"(higher = subject matches group pattern)"
+    )
+    ax.axhline(0, color="k", linewidth=0.5)
+    ax.set_ylim(-1, 1)
+    for bar, val in zip(bars, rho_sorted):
+        if np.isfinite(val):
+            ypos = val + 0.03 if val >= 0 else val - 0.03
+            va   = "bottom" if val >= 0 else "top"
+            ax.text(bar.get_x() + bar.get_width() / 2, ypos, f"{val:.2f}",
+                    ha="center", va=va, fontsize=8)
+    plt.tight_layout()
+    plt.savefig(out_dir / "subject_profile_similarity.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # (5) Channel disagreement — sorted by group |occ|, top-40
+    disagreement = 1.0 - agree_arr
+    sort_dis = np.argsort(occ_abs)[::-1]
+    top_n = min(40, len(sort_dis))
+    top_idx = sort_dis[:top_n]
+    dis_top  = disagreement[top_idx]
+    occ_top  = occ_abs[top_idx]
+    names_top = [electrode_names[i] for i in top_idx]
+    bar_colors_dis = ["#c62828" if d > 0.5 else "#1565c0" for d in dis_top]
+
+    fig, ax = plt.subplots(figsize=(max(14, top_n * 0.42), 5))
+    bars = ax.bar(range(top_n), dis_top, color=bar_colors_dis, alpha=0.85)
+    ax.set_xticks(range(top_n))
+    ax.set_xticklabels(names_top, rotation=45, ha="right", fontsize=8)
+    ax.set_ylabel("Fraction of Subjects Disagreeing with Group Sign")
+    ax.set_title(
+        "Channel Disagreement  (sorted by group |Occ ΔP|, top 40)\n"
+        "Red = majority of subjects disagree with group mean sign"
+    )
+    ax.axhline(0.5, color="k", linewidth=0.8, linestyle="--", alpha=0.6, label="50% disagreement")
+    ax.set_ylim(0, 1)
+    ax.legend(fontsize=8)
+    for i, (bar, occ_val) in enumerate(zip(bars, occ_top)):
+        ax.text(bar.get_x() + bar.get_width() / 2, dis_top[i] + 0.02,
+                f"{occ_val:.3f}", ha="center", va="bottom", fontsize=5, color="#555555")
+    plt.tight_layout()
+    plt.savefig(out_dir / "channel_disagreement.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    print(f"\n  Per-subject profile similarity: mean ρ = {mean_subj_rho:.3f} ± {std_subj_rho:.3f}")
+    print(f"  Saved subject specificity results to {out_dir}")
+    return corr_results, ch_spec
+
+
+# ══════════════════════════════════════════════════════════════════════
 # SECTION F — Frequency Analysis on Robust Important Channels
 # ══════════════════════════════════════════════════════════════════════
 
@@ -1419,7 +1761,8 @@ def write_focused_report(arch_info, ablation, combined_channels, roi_results,
                          subj_profiles, ch_matrix, r_occ_perm,
                          baseline_metrics, freq_short_window_warning,
                          n_windows, n_boot, top_k, fdr_alpha, stability_threshold,
-                         montage, out_dir, args):
+                         montage, out_dir, args,
+                         subj_spec_corr=None, ch_spec_data=None):
     """Generate the supervisor-ready focused XAI report."""
     print("\n" + "=" * 70)
     print("GENERATING FOCUSED XAI REPORT")
@@ -1762,9 +2105,98 @@ def write_focused_report(arch_info, ablation, combined_channels, roi_results,
         L.append("Frequency analysis was skipped (--skip-frequency).")
         L.append("")
 
-    # ── I. LIMITATIONS ────────────────────────────────────────────
+    # ── I. SUBJECT SPECIFICITY & FEATURE CORRELATION ──────────────
     L.append("=" * 80)
-    L.append("I. LIMITATIONS")
+    L.append("I. SUBJECT SPECIFICITY & FEATURE CORRELATION")
+    L.append("=" * 80)
+    L.append("")
+    if ch_matrix.shape[0] > 0:
+        L.append(f"Subjects analysed: {ch_matrix.shape[0]}")
+        L.append(f"Inter-subject profile correlation: mean r = {subj_r_mean:.3f} ± {subj_r_std:.3f}")
+        L.append("  A high mean r indicates consistent channel importance across subjects.")
+        L.append("  A low mean r indicates subject-specific importance patterns where")
+        L.append("  group-level maps may obscure individual differences.")
+        L.append("")
+        L.append("Per-channel subject specificity metrics are stored in subject_specificity.csv.")
+        L.append("  subject_agree_frac : fraction of subjects agreeing in sign with group mean")
+        L.append("  subj_std           : cross-subject standard deviation of importance scores")
+        L.append("  subject_cv         : coefficient of variation (std / |mean|) — higher = more subject-specific")
+        L.append("")
+
+        # Per-subject Spearman similarity
+        ps_rho = subj_spec_corr.get("_per_subject_rho", {}) if subj_spec_corr else {}
+        if ch_spec_data and len(ch_spec_data) > 0:
+            import json as _json
+            _spec_path = out_dir / "subject_specificity.json"
+            if _spec_path.exists():
+                with open(_spec_path, encoding="utf-8") as _f:
+                    _spec_loaded = _json.load(_f)
+                ps_rho = _spec_loaded.get("per_subject_spearman_rho", {})
+                ps_mean = _spec_loaded.get("per_subject_spearman_mean", float("nan"))
+                ps_std  = _spec_loaded.get("per_subject_spearman_std", float("nan"))
+                L.append(f"Per-subject profile similarity to group mean (Spearman ρ):")
+                L.append(f"  Mean ρ = {ps_mean:.3f} ± {ps_std:.3f}")
+                L.append(f"  (ρ = 1.0 means perfect agreement, ρ < 0 means inverted pattern)")
+                if ps_rho:
+                    L.append("")
+                    for subj, rho_val in sorted(ps_rho.items()):
+                        bar = "#" * int(max(0, rho_val) * 20)
+                        L.append(f"    {subj:>4}: ρ = {rho_val:+.3f}  {bar}")
+                L.append("")
+
+        if subj_spec_corr:
+            L.append("Pearson correlations between channel importance features and subject specificity:")
+            L.append("")
+            L.append("  Subject Agreement Fraction vs feature:")
+            L.append(f"    agree_frac vs |Occlusion ΔP|:   r = {subj_spec_corr.get('agree_frac_vs_occ_abs', float('nan')):+.3f}")
+            L.append(f"    agree_frac vs |Permutation ΔP|: r = {subj_spec_corr.get('agree_frac_vs_perm_abs', float('nan')):+.3f}")
+            L.append(f"    agree_frac vs IG importance:    r = {subj_spec_corr.get('agree_frac_vs_ig', float('nan')):+.3f}")
+            L.append(f"    agree_frac vs combined score:   r = {subj_spec_corr.get('agree_frac_vs_combined', float('nan')):+.3f}")
+            L.append("")
+            L.append("  Cross-subject Std (variability) vs feature:")
+            L.append(f"    subj_std vs |Occlusion ΔP|:     r = {subj_spec_corr.get('subj_std_vs_occ_abs', float('nan')):+.3f}")
+            L.append(f"    subj_std vs |Permutation ΔP|:   r = {subj_spec_corr.get('subj_std_vs_perm_abs', float('nan')):+.3f}")
+            L.append(f"    subj_std vs IG importance:      r = {subj_spec_corr.get('subj_std_vs_ig', float('nan')):+.3f}")
+            L.append(f"    subj_std vs combined score:     r = {subj_spec_corr.get('subj_std_vs_combined', float('nan')):+.3f}")
+            L.append("")
+            L.append("  Coefficient of Variation (CV) vs feature:")
+            L.append(f"    CV vs |Occlusion ΔP|:           r = {subj_spec_corr.get('cv_vs_occ_abs', float('nan')):+.3f}")
+            L.append(f"    CV vs |Permutation ΔP|:         r = {subj_spec_corr.get('cv_vs_perm_abs', float('nan')):+.3f}")
+            L.append(f"    CV vs IG importance:            r = {subj_spec_corr.get('cv_vs_ig', float('nan')):+.3f}")
+            L.append(f"    CV vs combined score:           r = {subj_spec_corr.get('cv_vs_combined', float('nan')):+.3f}")
+            L.append("")
+            L.append("INTERPRETATION GUIDE:")
+            L.append("  agree_frac ↑ with |occ|   → more important channels show stronger cross-subject agreement")
+            L.append("  subj_std ↑ with |occ|     → more important channels are also more variable across subjects")
+            L.append("  cv ↓ with |occ|           → more important channels are more generalizable (low CV)")
+            L.append("  If both agree_frac and subj_std increase with importance, the important channels")
+            L.append("  are consistently used but with subject-specific magnitudes.")
+
+        if ch_spec_data:
+            top_spec = sorted(ch_spec_data, key=lambda x: abs(x["occ_score"]), reverse=True)[:10]
+            L.append("")
+            L.append("Top-10 channels by |Occlusion ΔP| with subject specificity metrics:")
+            L.append("")
+            hdr = (f"{'Name':>6} | {'ROI':>16} | {'|Occ|':>7} | "
+                   f"{'agree_frac':>10} | {'subj_std':>8} | {'CV':>6} | {'Robust':>6}")
+            L.append(hdr)
+            L.append("-" * len(hdr))
+            for r in top_spec:
+                cv_str = f"{r['subject_cv']:.3f}" if np.isfinite(r['subject_cv']) else "  N/A"
+                L.append(
+                    f"{r['electrode_name']:>6} | {r['roi']:>16} | {abs(r['occ_score']):>7.5f} | "
+                    f"{r['subject_agree_frac']:>10.3f} | {r['subj_std']:>8.5f} | "
+                    f"{cv_str:>6} | {'YES' if r['robust_significant'] else 'no':>6}"
+                )
+        L.append("")
+    else:
+        L.append("Subject specificity analysis requires >=2 subjects. Not available.")
+        L.append("")
+
+    # ── J. LIMITATIONS ────────────────────────────────────────────
+    L.append("=" * 80)
+    L.append("J. LIMITATIONS")
+
     L.append("=" * 80)
     L.append("")
     L.append(f"1. SAMPLE SIZE: Analysis used N={n_windows} windows. While bootstrap CIs")
@@ -1805,9 +2237,9 @@ def write_focused_report(arch_info, ablation, combined_channels, roi_results,
         L.append("   delta-band effects, should be treated cautiously because the analysis window is short.")
     L.append("")
 
-    # ── J. NEXT STEPS ─────────────────────────────────────────────
+    # ── K. NEXT STEPS ─────────────────────────────────────────────
     L.append("=" * 80)
-    L.append("J. NEXT STEPS")
+    L.append("K. NEXT STEPS")
     L.append("=" * 80)
     L.append("")
     L.append("1. Verify electrode montage against official DTU dataset documentation.")
@@ -1845,6 +2277,13 @@ def write_focused_report(arch_info, ablation, combined_channels, roi_results,
         L.append("  frequency_by_important_channels.png  — Frequency heatmap + robust bar chart")
         L.append("  roi_frequency_summary.png            — ROI × frequency band summary")
         L.append("  frequency_importance_plot.png         — 3-panel frequency figure")
+    L.append("  subject_specificity.json             — Subject specificity metrics + correlations")
+    L.append("  subject_specificity.csv              — Per-channel specificity table")
+    L.append("  subject_specificity_correlation.png  — 4-panel scatter: features vs specificity")
+    L.append("  subject_specificity_correlation_summary.png — Correlation bar chart")
+    L.append("  subject_vs_group_heatmap.png                — Individual subject profiles vs group mean")
+    L.append("  subject_profile_similarity.png              — Per-subject Spearman ρ vs group mean")
+    L.append("  channel_disagreement.png                    — Channels where subjects disagree with group")
     L.append("  occlusion_perwindow.npy              — Raw (N, 64) per-window occlusion drops")
     L.append("  permutation_perwindow.npy            — Raw (N, 64) per-window permutation drops")
     L.append("  subject_channel_matrix.npy           — (n_subjects, 64) stability matrix")
@@ -2056,6 +2495,11 @@ def main():
         args.fdr_alpha, args.stability_threshold, args.occlusion_mode, args.skip_ig)
     decision.set_envelopes(att_all, unatt_all)
 
+    # ── Section G: Subject Specificity Analysis ───────────────────
+    subj_spec_corr, ch_spec_data = run_subject_specificity_analysis(
+        combined_channels, ch_matrix, out_dir)
+    decision.set_envelopes(att_all, unatt_all)
+
     # ── Section E: ROI Analysis ───────────────────────────────────
     occ_pw = np.load(out_dir / "occlusion_perwindow.npy")
     perm_pw = np.load(out_dir / "permutation_perwindow.npy")
@@ -2093,7 +2537,8 @@ def main():
         subj_profiles, ch_matrix, r_occ_perm,
         baseline_metrics, freq_short_window_warning,
         N, args.n_boot, args.top_k, args.fdr_alpha, args.stability_threshold,
-        montage, out_dir, args)
+        montage, out_dir, args,
+        subj_spec_corr=subj_spec_corr, ch_spec_data=ch_spec_data)
 
     # ── Update config with final counts ───────────────────────────
     config["n_robust_significant"] = len(final_rows)
