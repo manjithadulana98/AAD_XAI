@@ -217,7 +217,77 @@ for pf in plot_files:
         display(Image(filename=pf))
 
 # %% [markdown]
-# ## 7. Download results
-# 
-# All results are saved to `/kaggle/working/xai_results/`.
-# Use the Kaggle "Save Version" button to download them as an output artifact.
+# ## 7. Generate publication-ready figures
+#
+# Runs `scripts/generate_publication_xai_figures.py` using the XAI results produced
+# in step 3.  Figures are saved to `/kaggle/working/xai_results/publication_figures/`
+# as both **PNG** (300 dpi) and **PDF** (vector) — ready for thesis / paper submission.
+#
+# Figures produced:
+# | File | Content |
+# |---|---|
+# | `fig1_top15_channel_importance` | Occlusion & permutation ΔP side-by-side for top-15 channels |
+# | `fig2_core_vs_distributed_channels` | Core top-15 vs remaining 30 robust channels |
+# | `fig3_roi_importance` | ROI-level ΔP with 95% CI and permutation markers |
+# | `fig4_facilitatory_suppressive_channels` | Facilitatory (green) vs suppressive (red) channels |
+# | `fig5_subject_specificity` | Subject × channel heatmap + pairwise Spearman ρ matrix |
+# | `fig6_exploratory_frequency_contribution` | Per-band ΔP for top-15 channels (delta hatched = interpret cautiously) |
+#
+# Additional outputs: `publication_xai_summary.csv` and `publication_xai_interpretation.txt`.
+
+# %%
+import subprocess, sys, os
+
+PUB_OUTPUT = os.path.join(OUTPUT, "publication_figures")
+
+pub_cmd = [
+    sys.executable,
+    "scripts/generate_publication_xai_figures.py",
+    "--input-dir", OUTPUT,
+    "--output-dir", PUB_OUTPUT,
+]
+
+print("Command:", " ".join(pub_cmd))
+print("=" * 70)
+
+pub_process = subprocess.Popen(
+    pub_cmd,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+    bufsize=1,
+)
+for line in pub_process.stdout:
+    print(line, end="")
+pub_process.wait()
+print("=" * 70)
+print(f"Exit code: {pub_process.returncode}")
+
+# %%
+# Display publication figures inline
+from IPython.display import Image, display
+import glob
+
+pub_pngs = sorted(glob.glob(os.path.join(PUB_OUTPUT, "fig*.png")))
+if pub_pngs:
+    for pf in pub_pngs:
+        print(f"\n--- {os.path.basename(pf)} ---")
+        display(Image(filename=pf))
+else:
+    print("No publication figures found — check for errors above.")
+
+# %%
+# Show the interpretation text
+interp_path = os.path.join(PUB_OUTPUT, "publication_xai_interpretation.txt")
+if os.path.isfile(interp_path):
+    with open(interp_path, encoding="utf-8") as f:
+        print(f.read())
+else:
+    print("publication_xai_interpretation.txt not found.")
+
+# %% [markdown]
+# ## 8. Download results
+#
+# All results (raw XAI outputs + publication figures) are saved under
+# `/kaggle/working/xai_results/`.
+# Use the Kaggle **"Save Version"** button to download them as an output artifact.
