@@ -11,6 +11,23 @@
 #   RUN_AAD_XAI_STAGE    — set to 1 to also run the aad_xai training stage
 set -euo pipefail
 
+# ── Activate virtual environment if present ────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+VENV="${REPO_ROOT}/.venv"
+
+if [ -f "${VENV}/bin/activate" ]; then
+    # shellcheck disable=SC1091
+    source "${VENV}/bin/activate"
+    echo "Activated venv: ${VENV}"
+else
+    echo "No .venv found — using system Python. Run setup_gcp_vm.sh first."
+fi
+
+# Ubuntu 22.04 ships 'python3' not 'python'; resolve once and reuse.
+PYTHON=$(command -v python || command -v python3)
+echo "Python: ${PYTHON} ($(${PYTHON} --version))"
+
 # ── Configuration ──────────────────────────────────────────────────────────────
 DATASET_BUCKET_URI=${DATASET_BUCKET_URI:-gs://aad_data/datasets/DTU}
 LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-aad_data/datasets/DTU}
@@ -52,12 +69,12 @@ echo "DATASET resolved to: ${DATASET}"
 echo ""
 echo "=== Installing dependencies ==="
 # Upgrade build tools first so setuptools supports PEP 660 editable installs.
-pip install -q --upgrade pip setuptools wheel
-pip install -q -e .
-pip install -q -r requirements.txt
+"${PYTHON}" -m pip install -q --upgrade pip setuptools wheel
+"${PYTHON}" -m pip install -q -e "${REPO_ROOT}"
+"${PYTHON}" -m pip install -q -r "${REPO_ROOT}/requirements.txt"
 
 # ── Torch/CUDA sanity check ────────────────────────────────────────────────────
-python - <<'EOF'
+"${PYTHON}" - <<'EOF'
 import torch
 print(f"PyTorch: {torch.__version__}")
 print(f"CUDA available: {torch.cuda.is_available()}")
@@ -69,7 +86,7 @@ EOF
 if [ "${RUN_AAD_XAI_STAGE}" = "1" ]; then
     echo ""
     echo "=== Training aad_xai models (DTU, CUDA) ==="
-    python -m aad_xai.train \
+    "${PYTHON}" -m aad_xai.train \
         --config runs/config.json \
         --dataset dtu \
         --data-dir "${DATASET}" \
@@ -81,7 +98,7 @@ else
 fi
 
 # ── AADNet training ────────────────────────────────────────────────────────────
-cd external/AADNet
+cd "${REPO_ROOT}/external/AADNet"
 mkdir -p output results
 
 # Use envsubst to expand ${DATASET} in the config templates, then patch
@@ -97,25 +114,25 @@ sed -i "s/^\(\s*num_workers:\s*\).*/\1${AADNET_NUM_WORKERS}/" "${TMPDIR}/ss.yml"
 
 echo ""
 echo "=== AADNet SI (LOSO) Cross-Validation — RUN_ID=${RUN_ID} ==="
-python cross_validate_loso.py \
+"${PYTHON}" cross_validate_loso.py \
     -c "${TMPDIR}/si.yml" \
     -j "LOSO_AADNet_DTU_${RUN_ID}"
 
 echo ""
 echo "=== AADNet SS (Subject-Specific) Cross-Validation ==="
-python cross_validate_ss.py \
+"${PYTHON}" cross_validate_ss.py \
     -c "${TMPDIR}/ss.yml" \
     -j "SS_AADNet_DTU_${RUN_ID}"
 
-cd ../..
+cd "${REPO_ROOT}"
 
 # ── Upload artifacts to GCS ────────────────────────────────────────────────────
 echo ""
 echo "=== Uploading artifacts to ${ARTIFACTS_BUCKET_URI}/${RUN_ID} ==="
 if command -v gsutil >/dev/null 2>&1; then
-    gsutil -m rsync -r runs             "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/runs"          || true
-    gsutil -m rsync -r external/AADNet/output  "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_output"  || true
-    gsutil -m rsync -r external/AADNet/results "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_results" || true
+    gsutil -m rsync -r runs                        "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/runs"           || true
+    gsutil -m rsync -r external/AADNet/output      "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_output"  || true
+    gsutil -m rsync -r external/AADNet/results     "${ARTIFACTS_BUCKET_URI}/${RUN_ID}/aadnet_results" || true
     echo "Artifact path: ${ARTIFACTS_BUCKET_URI}/${RUN_ID}"
 else
     echo "WARNING: gsutil not found. Skipping artifact upload."
