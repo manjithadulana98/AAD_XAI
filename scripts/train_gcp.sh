@@ -51,6 +51,8 @@ echo "DATASET resolved to: ${DATASET}"
 # ── Install dependencies ───────────────────────────────────────────────────────
 echo ""
 echo "=== Installing dependencies ==="
+# Upgrade build tools first so setuptools supports PEP 660 editable installs.
+pip install -q --upgrade pip setuptools wheel
 pip install -q -e .
 pip install -q -r requirements.txt
 
