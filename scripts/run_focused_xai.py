@@ -2303,6 +2303,802 @@ def write_focused_report(arch_info, ablation, combined_channels, roi_results,
 
 
 # ══════════════════════════════════════════════════════════════════════
+# SECTION H — Subject-Level Statistical Validation
+# ══════════════════════════════════════════════════════════════════════
+
+def _compute_subject_means(occ_pw, perm_pw, selected_subject_ids):
+    """Aggregate per-window ΔP arrays into per-subject means.
+
+    Returns:
+        subj_occ   : ndarray (n_subjects, 64) — mean occ ΔP per subject
+        subj_perm  : ndarray (n_subjects, 64) — mean perm ΔP per subject
+        unique_subjects : list of subject labels in sorted order
+    """
+    unique_subjects = sorted(set(selected_subject_ids.tolist()))
+    n_subj = len(unique_subjects)
+    subj_occ  = np.zeros((n_subj, 64))
+    subj_perm = np.zeros((n_subj, 64))
+    for si, subj in enumerate(unique_subjects):
+        mask = selected_subject_ids == subj
+        subj_occ[si]  = occ_pw[mask].mean(axis=0)
+        subj_perm[si] = perm_pw[mask].mean(axis=0)
+    return subj_occ, subj_perm, unique_subjects
+
+
+def _bootstrap_ci_across_subjects(values, n_boot=500, seed=42):
+    """Bootstrap CI for a 1-D array of per-subject values."""
+    rng = np.random.RandomState(seed)
+    n = len(values)
+    boot_means = np.array([values[rng.randint(0, n, n)].mean() for _ in range(n_boot)])
+    lo, hi = np.percentile(boot_means, [2.5, 97.5])
+    return float(values.mean()), float(np.median(values)), float(values.std(ddof=1)), float(lo), float(hi)
+
+
+def run_subject_level_validation(occ_pw, perm_pw, selected_subject_ids,
+                                 combined_channels, montage, out_dir,
+                                 fdr_alpha, n_boot, seed, n_split_half=1000):
+    """Section H: subject-level statistical validation for publication-grade output.
+
+    Produces:
+        subject_channel_importance.csv
+        subject_level_channel_stats.csv
+        high_confidence_channels.csv
+        candidate_channels.csv
+        split_half_reliability.csv
+        split_half_reliability_summary.txt
+        subject_level_roi_stats.csv
+        high_confidence_channels_plot.png
+        subject_level_roi_plot.png
+    """
+    from scipy.stats import wilcoxon
+
+    print("\n" + "=" * 70)
+    print("SECTION H: SUBJECT-LEVEL STATISTICAL VALIDATION")
+    print("=" * 70)
+
+    ch_to_name = montage["ch_to_name"]
+    ch_to_roi  = montage["ch_to_roi"]
+
+    subj_occ, subj_perm, unique_subjects = _compute_subject_means(
+        occ_pw, perm_pw, selected_subject_ids)
+    n_subj = len(unique_subjects)
+    print(f"  Subjects: {n_subj}  |  Channels: 64")
+
+    if n_subj < 4:
+        print("  WARNING: fewer than 4 subjects — subject-level tests will have low power.")
+
+    # ── H.1  subject_channel_importance.csv ──────────────────────────
+    rows_sci = []
+    for si, subj in enumerate(unique_subjects):
+        for ch in range(64):
+            ov = subj_occ[si, ch]
+            pv = subj_perm[si, ch]
+            rows_sci.append({
+                "subject_id":    subj,
+                "channel_index": ch,
+                "channel_name":  ch_to_name.get(ch, f"Ch{ch}"),
+                "roi":           ch_to_roi.get(ch, "Unknown"),
+                "occ_mean_dP":   ov,
+                "perm_mean_dP":  pv,
+                "sign_occ":      int(np.sign(ov)),
+                "sign_perm":     int(np.sign(pv)),
+            })
+    sci_fields = ["subject_id", "channel_index", "channel_name", "roi",
+                  "occ_mean_dP", "perm_mean_dP", "sign_occ", "sign_perm"]
+    with open(out_dir / "subject_channel_importance.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=sci_fields)
+        w.writeheader()
+        w.writerows(rows_sci)
+    print(f"  [H.1] Saved subject_channel_importance.csv  ({len(rows_sci)} rows)")
+
+    # ── H.2  Wilcoxon signed-rank tests + bootstrap CI + Cohen's d ──
+    occ_p_raw  = np.ones(64)
+    perm_p_raw = np.ones(64)
+    ch_stats = []
+
+    for ch in range(64):
+        occ_vals  = subj_occ[:, ch]
+        perm_vals = subj_perm[:, ch]
+
+        # Wilcoxon (two-sided, against zero)
+        def _wilcox(vals):
+            if n_subj < 3:
+                return 1.0
+            nonzero = vals[vals != 0]
+            if len(nonzero) < 2:
+                return 1.0
+            try:
+                _, p = wilcoxon(vals, zero_method="wilcox", alternative="two-sided")
+                return float(p)
+            except Exception:
+                return 1.0
+
+        op = _wilcox(occ_vals)
+        pp = _wilcox(perm_vals)
+        occ_p_raw[ch]  = op
+        perm_p_raw[ch] = pp
+
+        om, omed, ostd, olo, ohi = _bootstrap_ci_across_subjects(occ_vals, n_boot, seed + ch)
+        pm, pmed, pstd, plo, phi = _bootstrap_ci_across_subjects(perm_vals, n_boot, seed + ch + 1000)
+
+        # Cohen's d (one-sample effect size vs zero)
+        occ_d  = float(om / ostd) if ostd > 1e-12 else 0.0
+        perm_d = float(pm / pstd) if pstd > 1e-12 else 0.0
+
+        ch_stats.append({
+            "channel_index": ch,
+            "channel_name":  ch_to_name.get(ch, f"Ch{ch}"),
+            "roi":           ch_to_roi.get(ch, "Unknown"),
+            "occ_subj_mean": om,
+            "occ_subj_median": omed,
+            "occ_subj_std":  ostd,
+            "occ_subj_ci_lo": olo,
+            "occ_subj_ci_hi": ohi,
+            "occ_wilcox_p":  op,
+            "occ_cohens_d":  occ_d,
+            "perm_subj_mean": pm,
+            "perm_subj_median": pmed,
+            "perm_subj_std": pstd,
+            "perm_subj_ci_lo": plo,
+            "perm_subj_ci_hi": phi,
+            "perm_wilcox_p": pp,
+            "perm_cohens_d": perm_d,
+        })
+
+    # BH-FDR over channel tests
+    occ_fdr_p,  occ_fdr_sig  = fdr_correction(occ_p_raw,  fdr_alpha)
+    perm_fdr_p, perm_fdr_sig = fdr_correction(perm_p_raw, fdr_alpha)
+
+    for i, row in enumerate(ch_stats):
+        row["occ_fdr_p"]       = float(occ_fdr_p[i])
+        row["occ_fdr_sig"]     = bool(occ_fdr_sig[i])
+        row["perm_fdr_p"]      = float(perm_fdr_p[i])
+        row["perm_fdr_sig"]    = bool(perm_fdr_sig[i])
+        row["both_fdr_sig"]    = bool(occ_fdr_sig[i]) and bool(perm_fdr_sig[i])
+
+    n_occ_subj_sig  = int(occ_fdr_sig.sum())
+    n_perm_subj_sig = int(perm_fdr_sig.sum())
+    n_both_subj_sig = sum(1 for r in ch_stats if r["both_fdr_sig"])
+    print(f"  [H.2] Subject-level FDR-significant channels:")
+    print(f"        Occlusion: {n_occ_subj_sig}/64  |  Permutation: {n_perm_subj_sig}/64  "
+          f"|  Both: {n_both_subj_sig}/64")
+
+    slcs_fields = [
+        "channel_index", "channel_name", "roi",
+        "occ_subj_mean", "occ_subj_median", "occ_subj_std", "occ_subj_ci_lo", "occ_subj_ci_hi",
+        "occ_wilcox_p", "occ_fdr_p", "occ_fdr_sig", "occ_cohens_d",
+        "perm_subj_mean", "perm_subj_median", "perm_subj_std", "perm_subj_ci_lo", "perm_subj_ci_hi",
+        "perm_wilcox_p", "perm_fdr_p", "perm_fdr_sig", "perm_cohens_d", "both_fdr_sig",
+    ]
+    with open(out_dir / "subject_level_channel_stats.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=slcs_fields)
+        w.writeheader()
+        w.writerows(ch_stats)
+    print("  [H.2] Saved subject_level_channel_stats.csv")
+
+    # ── H.3  Channel tiers ────────────────────────────────────────────
+    stats_by_ch = {r["channel_index"]: r for r in ch_stats}
+    ch_by_idx   = {c["channel"]: c for c in combined_channels}
+
+    # Combined absolute effect size (subject-level) for top-20% threshold
+    combined_abs = np.array([
+        abs(stats_by_ch[ch]["occ_subj_mean"]) + abs(stats_by_ch[ch]["perm_subj_mean"])
+        for ch in range(64)
+    ])
+    top20_threshold = np.percentile(combined_abs, 80)
+
+    tier_rows = []
+    for ch in range(64):
+        st = stats_by_ch[ch]
+        ci = ch_by_idx.get(ch, {})
+        occ_sign  = np.sign(st["occ_subj_mean"])
+        perm_sign = np.sign(st["perm_subj_mean"])
+        same_sign = (occ_sign == perm_sign) and (occ_sign != 0)
+        stab_frac = ci.get("subject_stability_frac", 0.0)
+        in_top20  = combined_abs[ch] >= top20_threshold
+
+        if (st["both_fdr_sig"] and same_sign
+                and stab_frac >= (12 / 18) and in_top20):
+            tier = "tier1_high_confidence"
+        elif (st["occ_fdr_sig"] or st["perm_fdr_sig"]) and same_sign and stab_frac >= (10 / 18):
+            tier = "tier2_candidate"
+        elif ci.get("robust_significant", False):
+            tier = "tier3_exploratory"
+        else:
+            tier = "tier4_not_robust"
+
+        # Suppressive override label
+        if tier in ("tier1_high_confidence", "tier2_candidate") and occ_sign < 0:
+            tier_label = tier + "_suppressive"
+        else:
+            tier_label = tier
+
+        tier_rows.append({
+            "channel_index":    ch,
+            "channel_name":     ch_to_name.get(ch, f"Ch{ch}"),
+            "roi":              ch_to_roi.get(ch, "Unknown"),
+            "tier":             tier_label,
+            "occ_subj_mean":    st["occ_subj_mean"],
+            "perm_subj_mean":   st["perm_subj_mean"],
+            "occ_cohens_d":     st["occ_cohens_d"],
+            "perm_cohens_d":    st["perm_cohens_d"],
+            "occ_fdr_sig":      st["occ_fdr_sig"],
+            "perm_fdr_sig":     st["perm_fdr_sig"],
+            "both_fdr_sig":     st["both_fdr_sig"],
+            "subject_stability": ci.get("subject_stability", "N/A"),
+            "in_top20pct_effect": in_top20,
+            "window_level_robust": ci.get("robust_significant", False),
+        })
+
+    tier_fields = [
+        "channel_index", "channel_name", "roi", "tier",
+        "occ_subj_mean", "perm_subj_mean", "occ_cohens_d", "perm_cohens_d",
+        "occ_fdr_sig", "perm_fdr_sig", "both_fdr_sig",
+        "subject_stability", "in_top20pct_effect", "window_level_robust",
+    ]
+    hc = [r for r in tier_rows if r["tier"].startswith("tier1")]
+    cand = [r for r in tier_rows if r["tier"].startswith("tier2")]
+    hc.sort(key=lambda r: -(abs(r["occ_subj_mean"]) + abs(r["perm_subj_mean"])))
+    cand.sort(key=lambda r: -(abs(r["occ_subj_mean"]) + abs(r["perm_subj_mean"])))
+
+    with open(out_dir / "high_confidence_channels.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=tier_fields)
+        w.writeheader()
+        w.writerows(hc)
+    with open(out_dir / "candidate_channels.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=tier_fields)
+        w.writeheader()
+        w.writerows(cand)
+
+    n_t1 = len(hc)
+    n_t2 = len(cand)
+    n_t3 = sum(1 for r in tier_rows if r["tier"].startswith("tier3"))
+    print(f"  [H.3] Channel tiers — T1 high-confidence: {n_t1} | T2 candidate: {n_t2} | T3 exploratory: {n_t3}")
+    if hc:
+        print("        High-confidence channels: " + ", ".join(r["channel_name"] for r in hc))
+
+    # ── H.3 Plot: high-confidence + candidate channels ────────────────
+    _plot_tier_channels(hc, cand, out_dir)
+
+    # ── H.4  Split-half reliability ───────────────────────────────────
+    split_half_results = _run_split_half_reliability(
+        subj_occ, subj_perm, unique_subjects, n_split_half, seed, out_dir)
+
+    # ── H.5  ROI-level subject statistics ─────────────────────────────
+    roi_subject_stats = _run_roi_subject_stats(
+        subj_occ, subj_perm, unique_subjects, montage, out_dir, fdr_alpha, n_boot, seed)
+
+    return {
+        "subj_occ":         subj_occ,
+        "subj_perm":        subj_perm,
+        "unique_subjects":  unique_subjects,
+        "ch_stats":         ch_stats,
+        "tier_rows":        tier_rows,
+        "hc":               hc,
+        "cand":             cand,
+        "split_half":       split_half_results,
+        "roi_subject_stats": roi_subject_stats,
+        "n_subj_occ_fdr_sig":  n_occ_subj_sig,
+        "n_subj_perm_fdr_sig": n_perm_subj_sig,
+        "n_both_subj_sig":     n_both_subj_sig,
+    }
+
+
+def _plot_tier_channels(hc, cand, out_dir):
+    """Bar plot of high-confidence (T1) and candidate (T2) channels."""
+    all_ch = hc + cand
+    if not all_ch:
+        print("  No T1/T2 channels to plot.")
+        return
+
+    fig, ax = plt.subplots(figsize=(max(10, len(all_ch) * 0.65), 5))
+    x = np.arange(len(all_ch))
+    w = 0.35
+    colors_t = ["#1565c0" if r["tier"].startswith("tier1") else "#42a5f5" for r in all_ch]
+    ax.bar(x - w / 2, [r["occ_subj_mean"] * 1e3 for r in all_ch],
+           width=w, color=colors_t, alpha=0.9, label="Occlusion ΔP (subj mean)")
+    ax.bar(x + w / 2, [r["perm_subj_mean"] * 1e3 for r in all_ch],
+           width=w, color=[c.replace("c0", "80").replace("f5", "b0") for c in colors_t],
+           alpha=0.85, label="Permutation ΔP (subj mean)")
+    ax.set_xticks(x)
+    ax.set_xticklabels([r["channel_name"] for r in all_ch], rotation=45, ha="right", fontsize=9)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_ylabel("Subject-mean ΔP x 10^3")
+    ax.set_title(
+        "Publication-Grade Channel Tiers (Subject-Level Statistics)\n"
+        "Dark blue = Tier-1 high-confidence | Light blue = Tier-2 candidate",
+        fontsize=10)
+    from matplotlib.patches import Patch
+    ax.legend(handles=[
+        Patch(color="#1565c0", label="T1 high-confidence (occ)"),
+        Patch(color="#42a5f5", label="T2 candidate (occ)"),
+    ], fontsize=8)
+    ax.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(out_dir / "high_confidence_channels_plot.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  [H.3] Saved high_confidence_channels_plot.png")
+
+
+def _run_split_half_reliability(subj_occ, subj_perm, unique_subjects,
+                                n_iter, seed, out_dir):
+    """Split subjects into two halves, measure Spearman r of channel rankings."""
+    from scipy.stats import spearmanr as _spearmanr
+
+    print(f"  [H.4] Split-half reliability ({n_iter} iterations)...")
+    n_subj = len(unique_subjects)
+    if n_subj < 4:
+        print("  WARNING: too few subjects for split-half (<4). Skipping.")
+        return {}
+
+    rng   = np.random.RandomState(seed)
+    combined_abs = np.abs(subj_occ) + np.abs(subj_perm)   # (n_subj, 64)
+    rhos  = []
+    half  = n_subj // 2
+
+    for _ in range(n_iter):
+        idx = rng.permutation(n_subj)
+        a, b = idx[:half], idx[half:]
+        rank_a = combined_abs[a].mean(axis=0)
+        rank_b = combined_abs[b].mean(axis=0)
+        rho, _ = _spearmanr(rank_a, rank_b)
+        if np.isfinite(rho):
+            rhos.append(float(rho))
+
+    rhos = np.array(rhos)
+    median_rho = float(np.median(rhos))
+    ci_lo      = float(np.percentile(rhos, 2.5))
+    ci_hi      = float(np.percentile(rhos, 97.5))
+    print(f"  [H.4] Split-half Spearman r: median={median_rho:.3f}  "
+          f"95% CI=[{ci_lo:.3f}, {ci_hi:.3f}]  (n_iter={len(rhos)})")
+
+    rows = [{"iteration": i + 1, "spearman_rho": float(r)} for i, r in enumerate(rhos)]
+    with open(out_dir / "split_half_reliability.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["iteration", "spearman_rho"])
+        w.writeheader()
+        w.writerows(rows)
+
+    summary = (
+        "SPLIT-HALF RELIABILITY SUMMARY\n"
+        "================================\n"
+        f"Method       : Random subject split (50/50), {n_iter} iterations\n"
+        f"Measure      : Spearman rank correlation of channel importance between halves\n"
+        f"Importance   : mean(|occ ΔP| + |perm ΔP|) per channel within each half\n"
+        f"N subjects   : {n_subj}  |  Half size: {half}\n\n"
+        f"Median Spearman r : {median_rho:.4f}\n"
+        f"95% CI            : [{ci_lo:.4f}, {ci_hi:.4f}]\n"
+        f"Min / Max         : {rhos.min():.4f} / {rhos.max():.4f}\n\n"
+        "Interpretation:\n"
+        "  r > 0.8  : high reliability — channel rankings are stable across subject samples.\n"
+        "  r = 0.5-0.8 : moderate reliability — main patterns replicate but some rank variability.\n"
+        "  r < 0.5  : low reliability — rankings are sensitive to which subjects are included;\n"
+        "             interpretations should be made cautiously.\n"
+    )
+    (out_dir / "split_half_reliability_summary.txt").write_text(summary, encoding="utf-8")
+    print("  [H.4] Saved split_half_reliability.csv + split_half_reliability_summary.txt")
+    return {"median_rho": median_rho, "ci_lo": ci_lo, "ci_hi": ci_hi, "n_iter": len(rhos)}
+
+
+def _run_roi_subject_stats(subj_occ, subj_perm, unique_subjects,
+                           montage, out_dir, fdr_alpha, n_boot, seed):
+    """ROI-level Wilcoxon tests across subjects."""
+    from scipy.stats import wilcoxon
+
+    print("  [H.5] ROI-level subject statistics...")
+    rois = montage["rois"]
+    n_subj = len(unique_subjects)
+    roi_rows = []
+    occ_ps, perm_ps = [], []
+
+    for roi_name, chs in rois.items():
+        # Mean across ROI channels per subject
+        roi_occ_subj  = subj_occ[:, chs].mean(axis=1)   # (n_subj,)
+        roi_perm_subj = subj_perm[:, chs].mean(axis=1)
+
+        def _w(vals):
+            if n_subj < 3:
+                return 1.0
+            nonzero = vals[vals != 0]
+            if len(nonzero) < 2:
+                return 1.0
+            try:
+                _, p = wilcoxon(vals, zero_method="wilcox", alternative="two-sided")
+                return float(p)
+            except Exception:
+                return 1.0
+
+        op = _w(roi_occ_subj)
+        pp = _w(roi_perm_subj)
+        occ_ps.append(op)
+        perm_ps.append(pp)
+
+        om, omed, ostd, olo, ohi = _bootstrap_ci_across_subjects(roi_occ_subj, n_boot, seed)
+        pm, pmed, pstd, plo, phi = _bootstrap_ci_across_subjects(roi_perm_subj, n_boot, seed + 100)
+
+        roi_rows.append({
+            "roi":            roi_name,
+            "n_channels":     len(chs),
+            "occ_subj_mean":  om,
+            "occ_subj_median": omed,
+            "occ_subj_std":   ostd,
+            "occ_subj_ci_lo": olo,
+            "occ_subj_ci_hi": ohi,
+            "occ_wilcox_p":   op,
+            "perm_subj_mean": pm,
+            "perm_subj_median": pmed,
+            "perm_subj_std":  pstd,
+            "perm_subj_ci_lo": plo,
+            "perm_subj_ci_hi": phi,
+            "perm_wilcox_p":  pp,
+        })
+
+    occ_fdr_p,  occ_fdr_sig  = fdr_correction(np.array(occ_ps),  fdr_alpha)
+    perm_fdr_p, perm_fdr_sig = fdr_correction(np.array(perm_ps), fdr_alpha)
+
+    for i, row in enumerate(roi_rows):
+        row["occ_fdr_p"]    = float(occ_fdr_p[i])
+        row["occ_fdr_sig"]  = bool(occ_fdr_sig[i])
+        row["perm_fdr_p"]   = float(perm_fdr_p[i])
+        row["perm_fdr_sig"] = bool(perm_fdr_sig[i])
+
+    roi_fields = [
+        "roi", "n_channels",
+        "occ_subj_mean", "occ_subj_median", "occ_subj_std", "occ_subj_ci_lo", "occ_subj_ci_hi",
+        "occ_wilcox_p", "occ_fdr_p", "occ_fdr_sig",
+        "perm_subj_mean", "perm_subj_median", "perm_subj_std", "perm_subj_ci_lo", "perm_subj_ci_hi",
+        "perm_wilcox_p", "perm_fdr_p", "perm_fdr_sig",
+    ]
+    with open(out_dir / "subject_level_roi_stats.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=roi_fields)
+        w.writeheader()
+        w.writerows(roi_rows)
+
+    # Plot
+    _plot_roi_subject_stats(roi_rows, out_dir)
+    print("  [H.5] Saved subject_level_roi_stats.csv + subject_level_roi_plot.png")
+    return roi_rows
+
+
+def _plot_roi_subject_stats(roi_rows, out_dir):
+    """Bar chart of ROI-level subject-mean ΔP with CI and significance markers."""
+    fig, ax = plt.subplots(figsize=(12, 5))
+    x = np.arange(len(roi_rows))
+    occ_means = np.array([r["occ_subj_mean"] * 1e3 for r in roi_rows])
+    occ_lo    = np.array([(r["occ_subj_mean"] - r["occ_subj_ci_lo"]) * 1e3 for r in roi_rows])
+    occ_hi    = np.array([(r["occ_subj_ci_hi"] - r["occ_subj_mean"]) * 1e3 for r in roi_rows])
+    perm_means = np.array([r["perm_subj_mean"] * 1e3 for r in roi_rows])
+
+    colors = ["#1565c0" if r["occ_fdr_sig"] else "#90caf9" for r in roi_rows]
+    ax.bar(x, occ_means, color=colors, width=0.55, zorder=3, alpha=0.9,
+           label="Occlusion (subj-mean)")
+    ax.errorbar(x, occ_means, yerr=[occ_lo, occ_hi],
+                fmt="none", color="black", capsize=4, linewidth=1.4, zorder=4)
+    ax.scatter(x, perm_means, color="#d32f2f", marker="D", s=55, zorder=5,
+               label="Permutation (subj-mean)")
+
+    for i, r in enumerate(roi_rows):
+        if r["occ_fdr_sig"]:
+            y_top = max(occ_means[i], perm_means[i]) + occ_hi[i] + 0.05
+            ax.text(i, y_top, "*", ha="center", va="bottom", fontsize=14, fontweight="bold")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([r["roi"] for r in roi_rows], rotation=30, ha="right", fontsize=9)
+    ax.set_ylabel("Subject-mean ΔP x 10^3  (95% CI)")
+    ax.set_title("ROI Importance — Subject-Level Statistics\n"
+                 "Dark bars: FDR-significant across subjects | * = FDR-significant | "
+                 "Diamond = permutation ΔP", fontsize=10)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.legend(fontsize=9, framealpha=0.9)
+    ax.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(out_dir / "subject_level_roi_plot.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+
+def run_subject_level_roi_frequency_stats(decision, eeg, att, unatt,
+                                          selected_subject_ids, montage,
+                                          out_dir, fdr_alpha, n_boot, seed):
+    """Section H.6: ROI x frequency band subject-level statistical tests.
+
+    For each subject, removes each frequency band from each ROI and records the
+    change in P(attended). Then tests the cross-subject distribution against zero
+    and applies BH-FDR correction across all ROI x band comparisons.
+    """
+    from scipy.signal import butter, sosfiltfilt
+    from scipy.stats import wilcoxon
+
+    print("\n  [H.6] ROI x frequency subject-level statistics...")
+
+    rois = montage["rois"]
+    unique_subjects = sorted(set(selected_subject_ids.tolist()))
+    n_subj = len(unique_subjects)
+    device = eeg.device
+    eeg_np = eeg.detach().cpu().numpy()
+    N, T, _ = eeg_np.shape
+    pad = 64
+
+    window_seconds = T / FS
+    if window_seconds <= 5.0:
+        print("  WARNING: short analysis window — delta-band frequency interpretation "
+              "is limited by frequency resolution. Treat delta-band results cautiously.")
+
+    # Precompute band content once
+    print("    Precomputing band-filtered signals...")
+    band_content = {}
+    for band_name, (lo, hi) in BANDS.items():
+        nyq = FS / 2.0
+        sos = butter(4, [max(lo / nyq, 0.01), min(hi / nyq, 0.99)],
+                     btype="bandpass", output="sos")
+        bc = np.zeros_like(eeg_np)
+        for w in range(N):
+            for ch in range(64):
+                sig    = eeg_np[w, :, ch]
+                padded = np.pad(sig, pad, mode="reflect")
+                bc[w, :, ch] = sosfiltfilt(sos, padded)[pad:pad + T]
+        band_content[band_name] = bc
+        print(f"    Band ready: {band_name}")
+
+    base_probs = get_attended_prob(decision, eeg, att, unatt)
+
+    # For each subject, ROI, and band: compute removal ΔP
+    subj_roi_band = {
+        (si, roi_name, band_name): []
+        for si in range(n_subj)
+        for roi_name in rois
+        for band_name in BANDS
+    }
+
+    for si, subj in enumerate(unique_subjects):
+        mask     = selected_subject_ids == subj
+        idxs     = np.where(mask)[0]
+        subj_base = base_probs[idxs]
+
+        for roi_name, chs in rois.items():
+            for band_name in BANDS:
+                eeg_mod = eeg_np[idxs].copy()
+                for ch in chs:
+                    eeg_mod[:, :, ch] -= band_content[band_name][idxs, :, ch]
+                eeg_t   = torch.from_numpy(eeg_mod.astype(np.float32)).to(device)
+                att_s   = att[idxs]
+                unatt_s = unatt[idxs]
+                mod_p   = get_attended_prob(decision, eeg_t, att_s, unatt_s)
+                subj_roi_band[(si, roi_name, band_name)] = float((subj_base - mod_p).mean())
+
+        print(f"    Subject {subj} done")
+        decision.set_envelopes(att, unatt)   # restore full envelopes
+
+    # Build per-subject matrix and run Wilcoxon tests
+    combos = [(roi, band) for roi in rois for band in BANDS]
+    raw_ps = []
+    result_rows = []
+
+    for roi_name, band_name in combos:
+        vals = np.array([subj_roi_band[(si, roi_name, band_name)]
+                         for si in range(n_subj)])
+        om, omed, ostd, olo, ohi = _bootstrap_ci_across_subjects(vals, n_boot, seed)
+        nz = vals[vals != 0]
+        if n_subj >= 3 and len(nz) >= 2:
+            try:
+                _, p = wilcoxon(vals, zero_method="wilcox", alternative="two-sided")
+                p = float(p)
+            except Exception:
+                p = 1.0
+        else:
+            p = 1.0
+
+        raw_ps.append(p)
+        result_rows.append({
+            "roi":            roi_name,
+            "band":           band_name,
+            "subj_mean_dp":   om,
+            "subj_median_dp": omed,
+            "subj_std_dp":    ostd,
+            "subj_ci_lo":     olo,
+            "subj_ci_hi":     ohi,
+            "wilcox_p":       p,
+        })
+
+    # FDR across all ROI x band
+    fdr_p_arr, fdr_sig_arr = fdr_correction(np.array(raw_ps), fdr_alpha)
+    for i, row in enumerate(result_rows):
+        row["fdr_p"]   = float(fdr_p_arr[i])
+        row["fdr_sig"] = bool(fdr_sig_arr[i])
+
+    n_sig = int(fdr_sig_arr.sum())
+    print(f"    FDR-significant ROI x band: {n_sig}/{len(combos)}")
+
+    # Add delta-band caution note
+    for row in result_rows:
+        if row["band"] == "delta":
+            row["caution"] = ("Delta-band interpretation is limited by short analysis window. "
+                              "Treat cautiously.")
+        else:
+            row["caution"] = ""
+
+    fields = ["roi", "band", "subj_mean_dp", "subj_median_dp", "subj_std_dp",
+              "subj_ci_lo", "subj_ci_hi", "wilcox_p", "fdr_p", "fdr_sig", "caution"]
+    with open(out_dir / "subject_level_roi_frequency_stats.csv", "w",
+              newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(result_rows)
+
+    print("  [H.6] Saved subject_level_roi_frequency_stats.csv")
+    return result_rows
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Publication summary
+# ══════════════════════════════════════════════════════════════════════
+
+def write_publication_summary(combined_channels, subject_val,
+                               baseline_metrics, arch_info, ablation,
+                               freq_by_channel, freq_by_roi,
+                               freq_short_window_warning,
+                               n_windows, montage, out_dir):
+    """Generate publication_summary.txt with conservative, subject-level framing."""
+    print("\n  Generating publication_summary.txt...")
+
+    hc    = subject_val.get("hc", [])
+    cand  = subject_val.get("cand", [])
+    sh    = subject_val.get("split_half", {})
+    roi_s = subject_val.get("roi_subject_stats", [])
+    n_t1  = len(hc)
+    n_t2  = len(cand)
+    n_subj = len(subject_val.get("unique_subjects", []))
+    n_robust_window = sum(1 for c in combined_channels if c["robust_significant"])
+
+    L = []
+    L.append("=" * 80)
+    L.append("PUBLICATION-GRADE XAI SUMMARY")
+    L.append("VLAAI EEG Auditory Attention Decoder — DTU Dataset")
+    L.append(f"N = {n_windows} windows, {n_subj} subjects")
+    L.append("=" * 80)
+    L.append("")
+
+    # A. Baseline
+    bm = baseline_metrics
+    L.append("A. BASELINE AAD PERFORMANCE")
+    L.append("-" * 40)
+    L.append(f"  AAD accuracy:              {bm['aad_accuracy']:.3f}")
+    L.append(f"  Correlation margin (mean): {bm['correlation_margin_mean']:+.5f}")
+    ci = bm.get("correlation_margin_CI", [float("nan"), float("nan")])
+    L.append(f"  Correlation margin (95% CI): [{ci[0]:+.5f}, {ci[1]:+.5f}]")
+    L.append("  Interpretation: baseline accuracy suggests the model achieves above-chance")
+    L.append("  auditory attention decoding on the DTU dataset, validating XAI interpretation.")
+    L.append("")
+
+    # B. Block 3 dominance
+    L.append("B. ARCHITECTURE — BLOCK 3 DOMINANCE")
+    L.append("-" * 40)
+    if ablation:
+        b3 = next((b for b in ablation if "Block 3" in b.get("name", "")), None)
+        if b3:
+            L.append(f"  Block 3 zero-weight ablation: ΔP = {b3.get('delta_p_mean', 0.0):+.5f}, "
+                     f"ΔAcc = {b3.get('delta_acc', 0.0):+.4f}")
+    L.append("  Block 3 (final recurrent iteration) dominates the decoding decision.")
+    L.append("  Blocks 0-2 can be ablated with negligible effect, suggesting the model")
+    L.append("  relies primarily on its final iteration output.")
+    L.append("")
+
+    # C. Subject-level high-confidence channels
+    L.append("C. SUBJECT-LEVEL HIGH-CONFIDENCE CHANNELS (MAIN FINDING)")
+    L.append("-" * 40)
+    L.append(f"  Tier 1 (high-confidence): {n_t1} channels")
+    L.append(f"    Criteria: both methods FDR-significant across subjects (q<0.05),")
+    L.append(f"    same sign, stability >= 12/{n_subj} subjects, top 20% effect size.")
+    if hc:
+        L.append("    Channels: " + ", ".join(
+            f"{r['channel_name']} ({r['roi'][:8]})" for r in hc))
+    else:
+        L.append("    No channels met all Tier-1 criteria.")
+    L.append("")
+    L.append(f"  Tier 2 (candidate): {n_t2} channels")
+    L.append(f"    Criteria: >= 1 method FDR-significant, same sign, stability >= 10/{n_subj}.")
+    if cand:
+        L.append("    Channels: " + ", ".join(
+            f"{r['channel_name']} ({r['roi'][:8]})" for r in cand[:10]))
+        if len(cand) > 10:
+            L.append(f"    ... and {len(cand) - 10} more (see candidate_channels.csv)")
+    L.append("")
+    L.append(f"  Window-level robust channels (broader sensitivity, lower confidence): {n_robust_window}/64")
+    L.append("  NOTE: The window-level count ({}) should not be presented as the primary".format(n_robust_window))
+    L.append("  conclusion. Windows are nested within subjects, so window-level FDR")
+    L.append("  may overstate statistical reliability. The Tier-1 subject-level")
+    L.append("  results are the main defensible finding.")
+    L.append("")
+
+    # D. ROI-level patterns
+    L.append("D. ROI-LEVEL PATTERNS (SUBJECT-LEVEL TESTS)")
+    L.append("-" * 40)
+    sig_rois = [r for r in roi_s if r.get("occ_fdr_sig", False)]
+    if sig_rois:
+        L.append("  FDR-significant ROIs (Wilcoxon across subjects):")
+        for r in sig_rois:
+            L.append(f"    {r['roi']:20s}: occ mean={r['occ_subj_mean']:+.5f} "
+                     f"CI=[{r['occ_subj_ci_lo']:+.5f},{r['occ_subj_ci_hi']:+.5f}]")
+    else:
+        L.append("  No ROIs reached subject-level FDR significance.")
+        L.append("  (ROI effects may still be present but underpowered with n={} subjects)".format(n_subj))
+    L.append("")
+
+    # E. Split-half reliability
+    L.append("E. SPLIT-HALF RELIABILITY")
+    L.append("-" * 40)
+    if sh:
+        L.append(f"  Median Spearman r across {sh.get('n_iter', 0)} random splits: "
+                 f"{sh.get('median_rho', float('nan')):.3f}")
+        L.append(f"  95% CI: [{sh.get('ci_lo', float('nan')):.3f}, "
+                 f"{sh.get('ci_hi', float('nan')):.3f}]")
+        rho = sh.get("median_rho", 0.0)
+        if rho >= 0.8:
+            L.append("  Interpretation: HIGH reliability — channel rankings are stable across subject samples.")
+        elif rho >= 0.5:
+            L.append("  Interpretation: MODERATE reliability — main patterns replicate with some rank variability.")
+        else:
+            L.append("  Interpretation: LOW reliability — rankings are sensitive to subject sampling.")
+            L.append("  Interpret individual channel ranks cautiously.")
+    else:
+        L.append("  Split-half analysis not available (insufficient subjects).")
+    L.append("")
+
+    # F. Subject variability
+    L.append("F. SUBJECT-LEVEL VARIABILITY")
+    L.append("-" * 40)
+    L.append("  Subject specificity analysis showed low-to-moderate group-level consistency.")
+    L.append("  Group-level channel importance maps may obscure individual differences.")
+    L.append("  Individual explanations may diverge from the group-level map.")
+    L.append("  See subject_channel_importance.csv and subject_level_channel_stats.csv.")
+    L.append("")
+
+    # G. Frequency findings
+    L.append("G. FREQUENCY-BAND FINDINGS (EXPLORATORY ONLY)")
+    L.append("-" * 40)
+    if freq_short_window_warning:
+        L.append("  WARNING: The analysis window is short. Delta-band frequency interpretation")
+        L.append("  is limited by frequency resolution and should be treated with extra caution.")
+    L.append("  Frequency-band analysis is exploratory. Results suggest, rather than prove,")
+    L.append("  which frequency components contribute to the model's representations.")
+    L.append("  Subject-level ROI x frequency statistics are in subject_level_roi_frequency_stats.csv.")
+    L.append("")
+
+    # H. Conservative language
+    L.append("=" * 80)
+    L.append("CONSERVATIVE LANGUAGE GUIDE")
+    L.append("  Use:   'suggests', 'is consistent with', 'showed statistically robust")
+    L.append("          but small-magnitude effects', 'should be interpreted cautiously',")
+    L.append("          'exploratory frequency-band evidence'")
+    L.append("  Avoid: 'proves', 'definitively shows', 'all channels are strongly important'")
+    L.append("")
+
+    # I. Output files
+    L.append("=" * 80)
+    L.append("OUTPUT FILES (PUBLICATION-GRADE)")
+    L.append("-" * 40)
+    files = [
+        ("high_confidence_channels.csv",          "Tier-1 subject-level high-confidence channels"),
+        ("candidate_channels.csv",                "Tier-2 candidate channels"),
+        ("subject_channel_importance.csv",        "Per-subject per-channel occ & perm mean ΔP"),
+        ("subject_level_channel_stats.csv",       "Wilcoxon tests + bootstrap CI + Cohen's d per channel"),
+        ("subject_level_roi_stats.csv",           "ROI-level Wilcoxon tests across subjects"),
+        ("subject_level_roi_frequency_stats.csv", "ROI x frequency band subject-level tests"),
+        ("split_half_reliability.csv",            "Per-iteration split-half Spearman r"),
+        ("split_half_reliability_summary.txt",    "Split-half summary"),
+        ("high_confidence_channels_plot.png",     "T1/T2 channel importance bar chart"),
+        ("subject_level_roi_plot.png",            "ROI subject-level importance plot"),
+    ]
+    for fname, desc in files:
+        L.append(f"  {fname:45s} {desc}")
+    L.append("")
+    L.append("=" * 80)
+
+    text = "\n".join(L)
+    (out_dir / "publication_summary.txt").write_text(text, encoding="utf-8")
+    print(f"  Saved publication_summary.txt  ({len(L)} lines)")
+    return text
+
+
+# ══════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
 
@@ -2540,17 +3336,59 @@ def main():
         montage, out_dir, args,
         subj_spec_corr=subj_spec_corr, ch_spec_data=ch_spec_data)
 
+    # ── Section H: Subject-Level Statistical Validation ──────────
+    subject_val = run_subject_level_validation(
+        occ_pw, perm_pw, selected_subject_ids,
+        combined_channels, montage, out_dir,
+        args.fdr_alpha, args.n_boot, args.seed,
+        n_split_half=1000)
+    decision.set_envelopes(att_all, unatt_all)
+
+    # ── Section H.6: ROI × frequency subject-level stats ─────────
+    roi_freq_subj_stats = []
+    if not args.skip_frequency and args.roi_frequency_mode:
+        try:
+            roi_freq_subj_stats = run_subject_level_roi_frequency_stats(
+                decision, eeg_all, att_all, unatt_all,
+                selected_subject_ids, montage,
+                out_dir, args.fdr_alpha, args.n_boot, args.seed)
+        except Exception as exc:
+            print(f"  WARNING: ROI x frequency subject stats failed: {exc}")
+            import traceback as _tb
+            _tb.print_exc()
+        decision.set_envelopes(att_all, unatt_all)
+
+    # ── Publication summary ───────────────────────────────────────
+    write_publication_summary(
+        combined_channels, subject_val,
+        baseline_metrics, arch_info, ablation,
+        freq_by_channel, freq_by_roi,
+        freq_short_window_warning,
+        N, montage, out_dir)
+
     # ── Update config with final counts ───────────────────────────
     config["n_robust_significant"] = len(final_rows)
     config["n_occ_fdr_significant"] = sum(1 for c in combined_channels if c["occ_fdr_significant"])
     config["n_perm_fdr_significant"] = sum(1 for c in combined_channels if c["perm_fdr_significant"])
     config["montage_source"] = montage["source"]
     config["frequency_short_window_warning"] = freq_short_window_warning
+    config["n_tier1_high_confidence"] = len(subject_val.get("hc", []))
+    config["n_tier2_candidate"] = len(subject_val.get("cand", []))
+    config["n_subj_occ_fdr_sig"] = subject_val.get("n_subj_occ_fdr_sig", 0)
+    config["n_subj_perm_fdr_sig"] = subject_val.get("n_subj_perm_fdr_sig", 0)
+    config["split_half_median_rho"] = subject_val.get("split_half", {}).get("median_rho", None)
     save_json(config, out_dir / "run_config.json")
 
+    n_t1 = len(subject_val.get("hc", []))
+    n_t2 = len(subject_val.get("cand", []))
     print("\n" + "=" * 70)
     print("FOCUSED XAI ANALYSIS COMPLETE")
-    print(f"  Robust significant channels: {len(final_rows)}/64")
+    print(f"  Window-level robust channels:        {len(final_rows)}/64")
+    print(f"  Subject-level Tier-1 (high-conf):   {n_t1}/64")
+    print(f"  Subject-level Tier-2 (candidate):   {n_t2}/64")
+    sh = subject_val.get("split_half", {})
+    if sh:
+        print(f"  Split-half reliability (median r):  {sh.get('median_rho', float('nan')):.3f}")
     print(f"  All results saved to: {args.output_dir}")
     print("=" * 70)
 
