@@ -34,7 +34,14 @@ LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-aad_data/datasets/DTU}
 ARTIFACTS_BUCKET_URI=${ARTIFACTS_BUCKET_URI:-gs://aad_data/artifacts/aad_xai}
 RUN_ID=${RUN_ID:-$(date +%Y%m%d_%H%M%S)}
 RUN_AAD_XAI_STAGE=${RUN_AAD_XAI_STAGE:-0}
-AADNET_NUM_WORKERS=${AADNET_NUM_WORKERS:-6}
+# multi-fold parallelization spawns nFold×num_workers processes simultaneously.
+# With nFold=8, 2 workers = 16 procs — well under the default 1024 fd limit.
+# Set to 0 to use the main process only (safest, slightly slower I/O).
+AADNET_NUM_WORKERS=${AADNET_NUM_WORKERS:-2}
+
+# Raise the open-file-descriptor limit for this process and all children.
+# Default is 1024; 8 folds × workers × files/worker can exceed it quickly.
+ulimit -n 65536 2>/dev/null || true
 
 # Keep CPU thread usage bounded (tune for your VM's vCPU count).
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
