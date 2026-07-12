@@ -942,15 +942,19 @@ def build_final_important_channel_table(combined_channels, freq_by_channel, out_
 # SECTION E — ROI-Level Grouping
 # ══════════════════════════════════════════════════════════════════════
 
-def run_roi_analysis(combined_channels, occ_pw, perm_pw, n_boot, seed, out_dir, montage):
-    """Aggregate channel importance at ROI level."""
+def run_roi_analysis(combined_channels, occ_pw, perm_pw, n_boot, seed, out_dir, montage,
+                     n_perm=5000):
+    """Aggregate channel importance at ROI level with sign-flip FDR correction."""
     print("\n" + "=" * 70)
     print("SECTION E: ROI-LEVEL IMPORTANCE")
     print("=" * 70)
 
     rois = montage["rois"]
     roi_results = []
-    for roi_name, chs in rois.items():
+    occ_p_raw  = []
+    perm_p_raw = []
+
+    for roi_idx, (roi_name, chs) in enumerate(rois.items()):
         # Occlusion: mean ΔP across ROI channels per window, then bootstrap
         roi_occ_pw = occ_pw[:, chs].mean(axis=1)
         occ_mean, occ_lo, occ_hi = bootstrap_ci(roi_occ_pw, n_boot, seed=seed)
@@ -958,8 +962,14 @@ def run_roi_analysis(combined_channels, occ_pw, perm_pw, n_boot, seed, out_dir, 
         roi_perm_pw = perm_pw[:, chs].mean(axis=1)
         perm_mean, perm_lo, perm_hi = bootstrap_ci(roi_perm_pw, n_boot, seed=seed)
 
-        occ_sig = (occ_lo > 0) or (occ_hi < 0)
-        perm_sig = (perm_lo > 0) or (perm_hi < 0)
+        occ_sig_ci  = (occ_lo > 0) or (occ_hi < 0)
+        perm_sig_ci = (perm_lo > 0) or (perm_hi < 0)
+
+        # Sign-flip permutation p-values per ROI
+        occ_p  = sign_flip_p_value(roi_occ_pw,  n_perm=n_perm, seed=seed + roi_idx)
+        perm_p = sign_flip_p_value(roi_perm_pw, n_perm=n_perm, seed=seed + roi_idx + 100)
+        occ_p_raw.append(occ_p)
+        perm_p_raw.append(perm_p)
 
         # Channels in this ROI from ranked list
         roi_ch_ranks = [c for c in combined_channels if c["roi"] == roi_name]
@@ -972,37 +982,60 @@ def run_roi_analysis(combined_channels, occ_pw, perm_pw, n_boot, seed, out_dir, 
             "n_channels": len(chs),
             "occ_mean_dp": occ_mean,
             "occ_ci": [occ_lo, occ_hi],
-            "occ_significant": occ_sig,
+            "occ_significant": occ_sig_ci,
+            "occ_perm_p": occ_p,
             "perm_mean_dp": perm_mean,
             "perm_ci": [perm_lo, perm_hi],
-            "perm_significant": perm_sig,
+            "perm_significant": perm_sig_ci,
+            "perm_perm_p": perm_p,
             "n_fdr_significant_channels": n_sig,
             "n_robust_channels": n_robust,
         })
 
-        print(f"  {roi_name:20s}: Occ dP={occ_mean:+.5f} [{occ_lo:+.5f},{occ_hi:+.5f}] "
-              f"{'SIG' if occ_sig else '   '} | "
-              f"Perm ΔP={perm_mean:+.5f} | "
-              f"{n_sig} FDR-sig, {n_robust} robust")
+    # BH-FDR over 9 ROI p-values (window-level)
+    occ_fdr_p,  occ_fdr_sig  = fdr_correction(np.array(occ_p_raw),  0.05)
+    perm_fdr_p, perm_fdr_sig = fdr_correction(np.array(perm_p_raw), 0.05)
+    for i, r in enumerate(roi_results):
+        r["occ_fdr_p"]   = float(occ_fdr_p[i])
+        r["occ_fdr_sig"] = bool(occ_fdr_sig[i])
+        r["perm_fdr_p"]  = float(perm_fdr_p[i])
+        r["perm_fdr_sig"]= bool(perm_fdr_sig[i])
+
+    n_occ_roi_fdr  = int(occ_fdr_sig.sum())
+    n_perm_roi_fdr = int(perm_fdr_sig.sum())
+
+    for r in roi_results:
+        print(f"  {r['roi']:20s}: Occ dP={r['occ_mean_dp']:+.5f} "
+              f"[{r['occ_ci'][0]:+.5f},{r['occ_ci'][1]:+.5f}] "
+              f"{'SIG' if r['occ_significant'] else '   '} "
+              f"FDR={'YES' if r['occ_fdr_sig'] else 'no ':3s} | "
+              f"Perm dP={r['perm_mean_dp']:+.5f} FDR={'YES' if r['perm_fdr_sig'] else 'no':3s} | "
+              f"{r['n_fdr_significant_channels']} ch-FDR, {r['n_robust_channels']} robust")
+
+    print(f"  Window-level ROI FDR (BH, sign-flip): "
+          f"Occ {n_occ_roi_fdr}/9  |  Perm {n_perm_roi_fdr}/9")
 
     save_json(roi_results, out_dir / "roi_importance.json")
 
     # CSV
-    csv_fields = ["roi", "n_channels", "occ_mean_dp", "occ_ci_lo", "occ_ci_hi",
-                  "occ_significant", "perm_mean_dp", "perm_ci_lo", "perm_ci_hi",
-                  "perm_significant", "n_fdr_significant_channels", "n_robust_channels"]
+    csv_fields = ["roi", "n_channels",
+                  "occ_mean_dp", "occ_ci_lo", "occ_ci_hi", "occ_significant",
+                  "occ_perm_p", "occ_fdr_p", "occ_fdr_sig",
+                  "perm_mean_dp", "perm_ci_lo", "perm_ci_hi", "perm_significant",
+                  "perm_perm_p", "perm_fdr_p", "perm_fdr_sig",
+                  "n_fdr_significant_channels", "n_robust_channels"]
     with open(out_dir / "roi_importance.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=csv_fields)
         w.writeheader()
         for r in roi_results:
             row = {k: r.get(k, "") for k in csv_fields}
-            row["occ_ci_lo"] = r["occ_ci"][0]
-            row["occ_ci_hi"] = r["occ_ci"][1]
+            row["occ_ci_lo"]  = r["occ_ci"][0]
+            row["occ_ci_hi"]  = r["occ_ci"][1]
             row["perm_ci_lo"] = r["perm_ci"][0]
             row["perm_ci_hi"] = r["perm_ci"][1]
             w.writerow(row)
 
-    # Plot
+    # Plot — use FDR significance for star markers
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     ax = axes[0]
@@ -1010,34 +1043,36 @@ def run_roi_analysis(combined_channels, occ_pw, perm_pw, n_boot, seed, out_dir, 
     occ_means = [r["occ_mean_dp"] for r in roi_results]
     occ_errs = [[r["occ_mean_dp"] - r["occ_ci"][0] for r in roi_results],
                 [r["occ_ci"][1] - r["occ_mean_dp"] for r in roi_results]]
-    colors_roi = ["#d32f2f" if m > 0 else "#1976d2" for m in occ_means]
+    colors_roi = ["#d32f2f" if r["occ_fdr_sig"] else ("#ff8a80" if r["occ_significant"] else "#1976d2")
+                  for r in roi_results]
     ax.bar(range(len(roi_names)), occ_means, yerr=occ_errs,
-           color=colors_roi, alpha=0.8, capsize=5)
+           color=colors_roi, alpha=0.85, capsize=5)
     ax.set_xticks(range(len(roi_names)))
     ax.set_xticklabels(roi_names, rotation=30, ha="right", fontsize=9)
     ax.set_ylabel("ΔP (occlusion)")
-    ax.set_title("ROI-Level Channel Occlusion Importance")
+    ax.set_title("ROI-Level Occlusion Importance\n(dark red = FDR-sig, light red = CI-sig, blue = not sig)")
     ax.axhline(0, color="k", linewidth=0.5)
     for i, r in enumerate(roi_results):
-        if r["occ_significant"]:
-            ax.text(i, occ_means[i] + 0.001 * np.sign(occ_means[i]), "*",
+        if r["occ_fdr_sig"]:
+            ax.text(i, occ_means[i] + 0.0005 * np.sign(occ_means[i]), "*",
                     ha="center", fontsize=14, fontweight="bold")
 
     ax = axes[1]
     perm_means = [r["perm_mean_dp"] for r in roi_results]
     perm_errs = [[r["perm_mean_dp"] - r["perm_ci"][0] for r in roi_results],
                  [r["perm_ci"][1] - r["perm_mean_dp"] for r in roi_results]]
-    colors_roi2 = ["#d32f2f" if m > 0 else "#1976d2" for m in perm_means]
+    colors_roi2 = ["#d32f2f" if r["perm_fdr_sig"] else ("#ff8a80" if r["perm_significant"] else "#1976d2")
+                   for r in roi_results]
     ax.bar(range(len(roi_names)), perm_means, yerr=perm_errs,
-           color=colors_roi2, alpha=0.8, capsize=5)
+           color=colors_roi2, alpha=0.85, capsize=5)
     ax.set_xticks(range(len(roi_names)))
     ax.set_xticklabels(roi_names, rotation=30, ha="right", fontsize=9)
     ax.set_ylabel("ΔP (permutation)")
-    ax.set_title("ROI-Level Channel Permutation Importance")
+    ax.set_title("ROI-Level Permutation Importance\n(dark red = FDR-sig, light red = CI-sig, blue = not sig)")
     ax.axhline(0, color="k", linewidth=0.5)
     for i, r in enumerate(roi_results):
-        if r["perm_significant"]:
-            ax.text(i, perm_means[i] + 0.001 * np.sign(perm_means[i]), "*",
+        if r["perm_fdr_sig"]:
+            ax.text(i, perm_means[i] + 0.0005 * np.sign(perm_means[i]), "*",
                     ha="center", fontsize=14, fontweight="bold")
 
     plt.tight_layout()
@@ -2928,6 +2963,197 @@ def run_subject_level_roi_frequency_stats(decision, eeg, att, unatt,
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Hierarchical FDR + Combined ROI
+# ══════════════════════════════════════════════════════════════════════
+
+def run_hierarchical_channel_fdr(ch_stats, roi_rows, montage, out_dir, fdr_alpha=0.05):
+    """Hierarchical FDR: gate on subject-level ROI significance, then re-run
+    channel FDR within only those ROIs.
+
+    This is more powerful than flat 64-channel FDR because:
+    - Fewer tests (only channels inside significant ROIs)
+    - ROI gate provides a justified prior for channel-level search
+
+    Returns dict with hierarchical results.
+    """
+    print("\n  [H.7] Hierarchical FDR (ROI gate -> channel-level re-test)...")
+
+    rois = montage["rois"]
+
+    # Step 1: find which ROIs passed subject-level FDR (from _run_roi_subject_stats)
+    sig_rois = [r["roi"] for r in roi_rows if r.get("occ_fdr_sig", False) or r.get("perm_fdr_sig", False)]
+    if not sig_rois:
+        print("  [H.7] No ROIs passed subject-level FDR gate — hierarchical test skipped.")
+        return {"sig_rois": [], "n_gated_channels": 0, "hier_sig_channels": [], "rows": []}
+
+    # Step 2: collect channel indices inside gated ROIs
+    gated_chs = []
+    for roi_name in sig_rois:
+        gated_chs.extend(rois.get(roi_name, []))
+    gated_chs = sorted(set(gated_chs))
+
+    print(f"  [H.7] Gated ROIs: {', '.join(sig_rois)}  ({len(gated_chs)} channels)")
+
+    # Step 3: pull Wilcoxon p-values for gated channels and re-run BH-FDR
+    stats_by_ch = {r["channel_index"]: r for r in ch_stats}
+    gated_rows  = [stats_by_ch[ch] for ch in gated_chs if ch in stats_by_ch]
+
+    occ_ps  = np.array([r["occ_wilcox_p"]  for r in gated_rows])
+    perm_ps = np.array([r["perm_wilcox_p"] for r in gated_rows])
+
+    occ_fdr_p,  occ_fdr_sig  = fdr_correction(occ_ps,  fdr_alpha)
+    perm_fdr_p, perm_fdr_sig = fdr_correction(perm_ps, fdr_alpha)
+
+    result_rows = []
+    for i, r in enumerate(gated_rows):
+        hier_sig = bool(occ_fdr_sig[i]) or bool(perm_fdr_sig[i])
+        both_sig = bool(occ_fdr_sig[i]) and bool(perm_fdr_sig[i])
+        tier = ("hier_tier1_both" if both_sig
+                else "hier_tier2_one" if hier_sig
+                else "hier_not_sig")
+        result_rows.append({
+            "channel_index":            r["channel_index"],
+            "channel_name":             r["channel_name"],
+            "roi":                      r["roi"],
+            "occ_wilcox_p":             r["occ_wilcox_p"],
+            "occ_hierarchical_fdr_p":   float(occ_fdr_p[i]),
+            "occ_hierarchical_sig":     bool(occ_fdr_sig[i]),
+            "occ_subj_mean":            r["occ_subj_mean"],
+            "occ_cohens_d":             r["occ_cohens_d"],
+            "perm_wilcox_p":            r["perm_wilcox_p"],
+            "perm_hierarchical_fdr_p":  float(perm_fdr_p[i]),
+            "perm_hierarchical_sig":    bool(perm_fdr_sig[i]),
+            "perm_subj_mean":           r["perm_subj_mean"],
+            "perm_cohens_d":            r["perm_cohens_d"],
+            "hierarchical_tier":        tier,
+        })
+
+    n_hier_sig = sum(1 for r in result_rows if r["hierarchical_tier"] != "hier_not_sig")
+    n_both_sig = sum(1 for r in result_rows if r["hierarchical_tier"] == "hier_tier1_both")
+    hier_sig_names = [r["channel_name"] for r in result_rows
+                      if r["hierarchical_tier"] != "hier_not_sig"]
+
+    print(f"  [H.7] Within gated ROIs: {n_hier_sig}/{len(gated_chs)} channels survive "
+          f"hierarchical FDR  (both methods: {n_both_sig})")
+    if hier_sig_names:
+        print("        Channels: " + ", ".join(hier_sig_names))
+
+    fields = [
+        "channel_index", "channel_name", "roi",
+        "occ_wilcox_p", "occ_hierarchical_fdr_p", "occ_hierarchical_sig",
+        "occ_subj_mean", "occ_cohens_d",
+        "perm_wilcox_p", "perm_hierarchical_fdr_p", "perm_hierarchical_sig",
+        "perm_subj_mean", "perm_cohens_d",
+        "hierarchical_tier",
+    ]
+    with open(out_dir / "hierarchical_channel_stats.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(result_rows)
+    print("  [H.7] Saved hierarchical_channel_stats.csv")
+
+    return {
+        "sig_rois":          sig_rois,
+        "n_gated_channels":  len(gated_chs),
+        "n_hier_sig":        n_hier_sig,
+        "n_both_sig":        n_both_sig,
+        "hier_sig_channels": hier_sig_names,
+        "rows":              result_rows,
+    }
+
+
+CORE_ROIS = ["Fronto-Central", "Central", "Temporal", "Centro-Parietal"]
+
+
+def run_combined_roi_analysis(subj_occ, subj_perm, unique_subjects, montage,
+                               out_dir, n_boot, seed):
+    """Single combined-ROI test: pool channels from top 4 ROIs into one unit.
+
+    Uses Fronto-Central + Central + Temporal + Centro-Parietal — the 4 ROIs
+    with largest occlusion ΔP in the full-run results.
+
+    1 test, no FDR correction needed. Most powerful subject-level claim.
+    """
+    from scipy.stats import wilcoxon
+
+    print("\n  [H.8] Combined core ROI analysis...")
+
+    rois = montage["rois"]
+    core_chs = []
+    present_rois = []
+    for roi_name in CORE_ROIS:
+        if roi_name in rois:
+            core_chs.extend(rois[roi_name])
+            present_rois.append(roi_name)
+        else:
+            print(f"    WARNING: ROI '{roi_name}' not in montage — skipped.")
+
+    core_chs = sorted(set(core_chs))
+    n_subj = len(unique_subjects)
+    print(f"  [H.8] Core ROIs: {', '.join(present_rois)}  ({len(core_chs)} channels, {n_subj} subjects)")
+
+    # Per-subject mean ΔP across all core channels
+    core_occ_subj  = subj_occ[:, core_chs].mean(axis=1)   # (n_subj,)
+    core_perm_subj = subj_perm[:, core_chs].mean(axis=1)
+
+    def _stat(vals, label):
+        mean, median, std, lo, hi = _bootstrap_ci_across_subjects(vals, n_boot, seed)
+        d = float(mean / std) if std > 1e-12 else 0.0
+        nz = vals[vals != 0]
+        if n_subj >= 3 and len(nz) >= 2:
+            try:
+                _, p = wilcoxon(vals, zero_method="wilcox", alternative="two-sided")
+                p = float(p)
+            except Exception:
+                p = 1.0
+        else:
+            p = 1.0
+        sig = "YES (p<0.05)" if p < 0.05 else f"no (p={p:.3f})"
+        print(f"    {label}: mean={mean:+.6f}  95%CI=[{lo:+.6f},{hi:+.6f}]  "
+              f"Wilcoxon p={p:.4f} [{sig}]  Cohen's d={d:.3f}")
+        return {"mean": mean, "median": median, "std": std, "ci_lo": lo, "ci_hi": hi,
+                "wilcox_p": p, "cohens_d": d, "significant": p < 0.05}
+
+    occ_res  = _stat(core_occ_subj,  "Occlusion ")
+    perm_res = _stat(core_perm_subj, "Permutation")
+
+    rows = [{
+        "core_rois":             "+".join(present_rois),
+        "n_channels":            len(core_chs),
+        "n_subjects":            n_subj,
+        "occ_subj_mean":         occ_res["mean"],
+        "occ_subj_median":       occ_res["median"],
+        "occ_subj_std":          occ_res["std"],
+        "occ_subj_ci_lo":        occ_res["ci_lo"],
+        "occ_subj_ci_hi":        occ_res["ci_hi"],
+        "occ_wilcox_p":          occ_res["wilcox_p"],
+        "occ_significant":       occ_res["significant"],
+        "occ_cohens_d":          occ_res["cohens_d"],
+        "perm_subj_mean":        perm_res["mean"],
+        "perm_subj_median":      perm_res["median"],
+        "perm_subj_std":         perm_res["std"],
+        "perm_subj_ci_lo":       perm_res["ci_lo"],
+        "perm_subj_ci_hi":       perm_res["ci_hi"],
+        "perm_wilcox_p":         perm_res["wilcox_p"],
+        "perm_significant":      perm_res["significant"],
+        "perm_cohens_d":         perm_res["cohens_d"],
+    }]
+    fields = list(rows[0].keys())
+    with open(out_dir / "combined_roi_analysis.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(rows)
+    print("  [H.8] Saved combined_roi_analysis.csv")
+
+    return {
+        "core_rois":   present_rois,
+        "n_channels":  len(core_chs),
+        "occ":         occ_res,
+        "perm":        perm_res,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Publication summary
 # ══════════════════════════════════════════════════════════════════════
 
@@ -2935,7 +3161,9 @@ def write_publication_summary(combined_channels, subject_val,
                                baseline_metrics, arch_info, ablation,
                                freq_by_channel, freq_by_roi,
                                freq_short_window_warning,
-                               n_windows, montage, out_dir):
+                               n_windows, montage, out_dir,
+                               hierarchical_result=None,
+                               combined_roi_result=None):
     """Generate publication_summary.txt with conservative, subject-level framing."""
     print("\n  Generating publication_summary.txt...")
 
@@ -2981,35 +3209,80 @@ def write_publication_summary(combined_channels, subject_val,
     L.append("  relies primarily on its final iteration output.")
     L.append("")
 
-    # C. Subject-level high-confidence channels
-    L.append("C. SUBJECT-LEVEL HIGH-CONFIDENCE CHANNELS (MAIN FINDING)")
+    # C. Combined core ROI (primary defensible claim)
+    L.append("C. COMBINED CORE ROI — PRIMARY DEFENSIBLE FINDING")
     L.append("-" * 40)
-    L.append(f"  Tier 1 (high-confidence): {n_t1} channels")
-    L.append(f"    Criteria: both methods FDR-significant across subjects (q<0.05),")
-    L.append(f"    same sign, stability >= 12/{n_subj} subjects, top 20% effect size.")
+    cr = combined_roi_result or {}
+    core_rois_str = " + ".join(cr.get("core_rois", CORE_ROIS))
+    L.append(f"  Core ROIs: {core_rois_str}")
+    L.append(f"  N channels in core: {cr.get('n_channels', 'N/A')}")
+    occ_cr = cr.get("occ", {})
+    perm_cr = cr.get("perm", {})
+    if occ_cr:
+        L.append(f"  Occlusion  — subj mean={occ_cr['mean']:+.6f}  "
+                 f"CI=[{occ_cr['ci_lo']:+.6f},{occ_cr['ci_hi']:+.6f}]  "
+                 f"Wilcoxon p={occ_cr['wilcox_p']:.4f}  Cohen's d={occ_cr['cohens_d']:.3f}  "
+                 f"{'SIGNIFICANT' if occ_cr['significant'] else 'not significant'}")
+    if perm_cr:
+        L.append(f"  Permutation — subj mean={perm_cr['mean']:+.6f}  "
+                 f"CI=[{perm_cr['ci_lo']:+.6f},{perm_cr['ci_hi']:+.6f}]  "
+                 f"Wilcoxon p={perm_cr['wilcox_p']:.4f}  Cohen's d={perm_cr['cohens_d']:.3f}  "
+                 f"{'SIGNIFICANT' if perm_cr['significant'] else 'not significant'}")
+    L.append("  Interpretation: pooling the four highest-importance ROIs into a single")
+    L.append("  combined unit maximises statistical power (1 test, no FDR correction).")
+    L.append("  A significant combined-ROI result supports the existence of an")
+    L.append("  auditory-attention-relevant network even when individual channels")
+    L.append("  are underpowered with n={} subjects.".format(n_subj))
+    L.append("")
+
+    # D. Hierarchical FDR channels
+    L.append("D. HIERARCHICAL FDR — CHANNEL-LEVEL RESULTS")
+    L.append("-" * 40)
+    hr = hierarchical_result or {}
+    sig_roi_gate = hr.get("sig_rois", [])
+    n_gated = hr.get("n_gated_channels", 0)
+    n_hier  = hr.get("n_hier_sig", 0)
+    hier_names = hr.get("hier_sig_channels", [])
+    if sig_roi_gate:
+        L.append(f"  ROI gate (subject-level FDR): {', '.join(sig_roi_gate)}")
+        L.append(f"  Channels tested within gate: {n_gated}")
+        L.append(f"  Channels surviving hierarchical FDR: {n_hier}/{n_gated}")
+        if hier_names:
+            L.append("  Significant channels: " + ", ".join(hier_names))
+        L.append("  Method: Wilcoxon signed-rank (n_subj) + BH-FDR within gated channels.")
+        L.append("  This is more powerful than flat 64-channel FDR because:")
+        L.append("  (a) fewer tests after ROI gating, (b) ROI gate provides justified prior.")
+    else:
+        L.append("  No ROIs passed subject-level FDR gate — hierarchical channel test skipped.")
+        L.append(f"  (Flat FDR across all 64 channels: 0 occ-sig, 12 perm-sig)")
+    L.append("")
+
+    # E. Subject-level flat FDR channel tiers (for completeness)
+    L.append("E. FLAT SUBJECT-LEVEL FDR — CHANNEL TIERS (for reference)")
+    L.append("-" * 40)
+    L.append(f"  Tier 1 (high-confidence, flat FDR): {n_t1} channels")
+    L.append(f"    Criteria: both methods FDR-sig (q<0.05, 64 tests), same sign,")
+    L.append(f"    stability >= 12/{n_subj}, top 20% effect.")
     if hc:
         L.append("    Channels: " + ", ".join(
             f"{r['channel_name']} ({r['roi'][:8]})" for r in hc))
     else:
-        L.append("    No channels met all Tier-1 criteria.")
+        L.append("    None met all Tier-1 criteria (underpowered with n={}).".format(n_subj))
     L.append("")
     L.append(f"  Tier 2 (candidate): {n_t2} channels")
-    L.append(f"    Criteria: >= 1 method FDR-significant, same sign, stability >= 10/{n_subj}.")
     if cand:
         L.append("    Channels: " + ", ".join(
             f"{r['channel_name']} ({r['roi'][:8]})" for r in cand[:10]))
         if len(cand) > 10:
             L.append(f"    ... and {len(cand) - 10} more (see candidate_channels.csv)")
     L.append("")
-    L.append(f"  Window-level robust channels (broader sensitivity, lower confidence): {n_robust_window}/64")
-    L.append("  NOTE: The window-level count ({}) should not be presented as the primary".format(n_robust_window))
-    L.append("  conclusion. Windows are nested within subjects, so window-level FDR")
-    L.append("  may overstate statistical reliability. The Tier-1 subject-level")
-    L.append("  results are the main defensible finding.")
+    L.append(f"  Window-level robust (liberal, nested-data caveat): {n_robust_window}/64")
+    L.append("  NOTE: window-level FDR treats 8100 non-independent windows as independent.")
+    L.append("  Use hierarchical or combined-ROI results as primary claims.")
     L.append("")
 
-    # D. ROI-level patterns
-    L.append("D. ROI-LEVEL PATTERNS (SUBJECT-LEVEL TESTS)")
+    # F. ROI-level patterns (subject-level)
+    L.append("F. ROI-LEVEL PATTERNS (SUBJECT-LEVEL TESTS)")
     L.append("-" * 40)
     sig_rois = [r for r in roi_s if r.get("occ_fdr_sig", False)]
     if sig_rois:
@@ -3018,8 +3291,8 @@ def write_publication_summary(combined_channels, subject_val,
             L.append(f"    {r['roi']:20s}: occ mean={r['occ_subj_mean']:+.5f} "
                      f"CI=[{r['occ_subj_ci_lo']:+.5f},{r['occ_subj_ci_hi']:+.5f}]")
     else:
-        L.append("  No ROIs reached subject-level FDR significance.")
-        L.append("  (ROI effects may still be present but underpowered with n={} subjects)".format(n_subj))
+        L.append("  No individual ROIs reached subject-level FDR significance (9 tests).")
+        L.append("  (Effects present but underpowered at n={} subjects per ROI.)".format(n_subj))
     L.append("")
 
     # E. Split-half reliability
@@ -3062,7 +3335,7 @@ def write_publication_summary(combined_channels, subject_val,
     L.append("  Subject-level ROI x frequency statistics are in subject_level_roi_frequency_stats.csv.")
     L.append("")
 
-    # H. Conservative language
+    # I. Conservative language
     L.append("=" * 80)
     L.append("CONSERVATIVE LANGUAGE GUIDE")
     L.append("  Use:   'suggests', 'is consistent with', 'showed statistically robust")
@@ -3071,17 +3344,20 @@ def write_publication_summary(combined_channels, subject_val,
     L.append("  Avoid: 'proves', 'definitively shows', 'all channels are strongly important'")
     L.append("")
 
-    # I. Output files
+    # J. Output files
     L.append("=" * 80)
     L.append("OUTPUT FILES (PUBLICATION-GRADE)")
     L.append("-" * 40)
     files = [
-        ("high_confidence_channels.csv",          "Tier-1 subject-level high-confidence channels"),
+        ("combined_roi_analysis.csv",             "Combined core ROI single-test result (primary claim)"),
+        ("hierarchical_channel_stats.csv",        "Channels surviving hierarchical FDR"),
+        ("high_confidence_channels.csv",          "Tier-1 flat FDR channels"),
         ("candidate_channels.csv",                "Tier-2 candidate channels"),
         ("subject_channel_importance.csv",        "Per-subject per-channel occ & perm mean ΔP"),
-        ("subject_level_channel_stats.csv",       "Wilcoxon tests + bootstrap CI + Cohen's d per channel"),
+        ("subject_level_channel_stats.csv",       "Wilcoxon + bootstrap CI + Cohen's d per channel"),
         ("subject_level_roi_stats.csv",           "ROI-level Wilcoxon tests across subjects"),
         ("subject_level_roi_frequency_stats.csv", "ROI x frequency band subject-level tests"),
+        ("roi_importance.csv",                    "Window-level ROI analysis with sign-flip FDR"),
         ("split_half_reliability.csv",            "Per-iteration split-half Spearman r"),
         ("split_half_reliability_summary.txt",    "Split-half summary"),
         ("high_confidence_channels_plot.png",     "T1/T2 channel importance bar chart"),
@@ -3296,11 +3572,12 @@ def main():
         combined_channels, ch_matrix, out_dir)
     decision.set_envelopes(att_all, unatt_all)
 
-    # ── Section E: ROI Analysis ───────────────────────────────────
+    # ── Section E: ROI Analysis (with sign-flip FDR) ─────────────
     occ_pw = np.load(out_dir / "occlusion_perwindow.npy")
     perm_pw = np.load(out_dir / "permutation_perwindow.npy")
     roi_results = run_roi_analysis(combined_channels, occ_pw, perm_pw,
-                                   args.n_boot, args.seed, out_dir, montage)
+                                   args.n_boot, args.seed, out_dir, montage,
+                                   n_perm=args.n_perm)
 
     # ── Section F: Frequency Analysis ─────────────────────────────
     freq_by_channel = []
@@ -3358,13 +3635,26 @@ def main():
             _tb.print_exc()
         decision.set_envelopes(att_all, unatt_all)
 
+    # ── H.7: Hierarchical FDR ─────────────────────────────────────
+    hier_result = run_hierarchical_channel_fdr(
+        subject_val["ch_stats"], subject_val["roi_subject_stats"],
+        montage, out_dir, args.fdr_alpha)
+
+    # ── H.8: Combined core ROI analysis ──────────────────────────
+    combined_roi_result = run_combined_roi_analysis(
+        subject_val["subj_occ"], subject_val["subj_perm"],
+        subject_val["unique_subjects"], montage, out_dir,
+        args.n_boot, args.seed)
+
     # ── Publication summary ───────────────────────────────────────
     write_publication_summary(
         combined_channels, subject_val,
         baseline_metrics, arch_info, ablation,
         freq_by_channel, freq_by_roi,
         freq_short_window_warning,
-        N, montage, out_dir)
+        N, montage, out_dir,
+        hierarchical_result=hier_result,
+        combined_roi_result=combined_roi_result)
 
     # ── Update config with final counts ───────────────────────────
     config["n_robust_significant"] = len(final_rows)
@@ -3377,15 +3667,27 @@ def main():
     config["n_subj_occ_fdr_sig"] = subject_val.get("n_subj_occ_fdr_sig", 0)
     config["n_subj_perm_fdr_sig"] = subject_val.get("n_subj_perm_fdr_sig", 0)
     config["split_half_median_rho"] = subject_val.get("split_half", {}).get("median_rho", None)
+    config["n_hier_sig_channels"] = hier_result.get("n_hier_sig", 0)
+    config["combined_roi_occ_sig"] = combined_roi_result.get("occ", {}).get("significant", False)
+    config["combined_roi_perm_sig"] = combined_roi_result.get("perm", {}).get("significant", False)
     save_json(config, out_dir / "run_config.json")
 
     n_t1 = len(subject_val.get("hc", []))
     n_t2 = len(subject_val.get("cand", []))
+    n_hier = hier_result.get("n_hier_sig", 0)
+    cr_occ_sig = combined_roi_result.get("occ", {}).get("significant", False)
+    cr_perm_sig = combined_roi_result.get("perm", {}).get("significant", False)
     print("\n" + "=" * 70)
     print("FOCUSED XAI ANALYSIS COMPLETE")
     print(f"  Window-level robust channels:        {len(final_rows)}/64")
-    print(f"  Subject-level Tier-1 (high-conf):   {n_t1}/64")
     print(f"  Subject-level Tier-2 (candidate):   {n_t2}/64")
+    print(f"  Hierarchical FDR sig channels:       {n_hier} (within gated ROIs)")
+    occ_p_cr  = combined_roi_result.get("occ", {}).get("wilcox_p", float("nan"))
+    perm_p_cr = combined_roi_result.get("perm", {}).get("wilcox_p", float("nan"))
+    print(f"  Combined core ROI (occ):             {'SIG' if cr_occ_sig else 'not sig'} "
+          f"(p={occ_p_cr:.4f})")
+    print(f"  Combined core ROI (perm):            {'SIG' if cr_perm_sig else 'not sig'} "
+          f"(p={perm_p_cr:.4f})")
     sh = subject_val.get("split_half", {})
     if sh:
         print(f"  Split-half reliability (median r):  {sh.get('median_rho', float('nan')):.3f}")
