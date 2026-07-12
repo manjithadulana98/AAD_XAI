@@ -1084,6 +1084,198 @@ def run_roi_analysis(combined_channels, occ_pw, perm_pw, n_boot, seed, out_dir, 
 
 
 # ══════════════════════════════════════════════════════════════════════
+# SECTION E2 — ROI Group Ablation (zero entire ROI simultaneously)
+# ══════════════════════════════════════════════════════════════════════
+
+def run_roi_group_ablation(decision, eeg, att, unatt, montage,
+                           n_boot, n_perm, seed, out_dir):
+    """Zero ALL channels in each ROI simultaneously and measure group ΔP.
+
+    This gives much larger effects than single-channel occlusion because the
+    combined signal loss is additive. BH-FDR is applied over the 9 ROI tests.
+    Saves: roi_group_ablation.csv, roi_group_ablation_plot.png
+    """
+    print("\n" + "=" * 70)
+    print("SECTION E2: ROI GROUP ABLATION (simultaneous channel removal)")
+    print("=" * 70)
+
+    rois = montage["rois"]
+    base_probs = get_attended_prob(decision, eeg, att, unatt)
+
+    results = []
+    p_raw = []
+
+    for roi_idx, (roi_name, ch_indices) in enumerate(rois.items()):
+        eeg_m = eeg.clone()
+        for ch in ch_indices:
+            eeg_m[:, :, ch] = 0.0
+        abl_probs = get_attended_prob(decision, eeg_m, att, unatt)
+        dp_pw = base_probs - abl_probs            # positive = roi is important
+
+        mean_dp, ci_lo, ci_hi = bootstrap_ci(dp_pw, n_boot, seed=seed + roi_idx)
+        pval = sign_flip_p_value(dp_pw, n_perm=n_perm, seed=seed + roi_idx + 200)
+
+        p_raw.append(pval)
+        results.append({
+            "roi": roi_name,
+            "n_channels": len(ch_indices),
+            "mean_dp": mean_dp,
+            "ci_lo": ci_lo,
+            "ci_hi": ci_hi,
+            "perm_p": pval,
+        })
+        print(f"  {roi_name:20s}: ΔP={mean_dp:+.5f} [{ci_lo:+.5f},{ci_hi:+.5f}] "
+              f"p={pval:.4f}  (zeroed {len(ch_indices)} ch)")
+
+    # BH-FDR over 9 ROI tests
+    fdr_p_arr, fdr_sig_arr = fdr_correction(np.array(p_raw), 0.05)
+    n_sig = int(fdr_sig_arr.sum())
+    for i, r in enumerate(results):
+        r["fdr_p"] = float(fdr_p_arr[i])
+        r["fdr_sig"] = bool(fdr_sig_arr[i])
+
+    print(f"\n  ROI group ablation: {n_sig}/9 ROIs FDR-significant")
+    for r in results:
+        if r["fdr_sig"]:
+            print(f"    *** {r['roi']} (FDR-sig): ΔP={r['mean_dp']:+.5f}  "
+                  f"CI=[{r['ci_lo']:+.5f},{r['ci_hi']:+.5f}]")
+
+    # CSV
+    fieldnames = ["roi", "n_channels", "mean_dp", "ci_lo", "ci_hi",
+                  "perm_p", "fdr_p", "fdr_sig"]
+    with open(out_dir / "roi_group_ablation.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for r in results:
+            w.writerow({k: r[k] for k in fieldnames})
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 5))
+    roi_names = [r["roi"] for r in results]
+    means = [r["mean_dp"] for r in results]
+    errs = [[r["mean_dp"] - r["ci_lo"] for r in results],
+            [r["ci_hi"] - r["mean_dp"] for r in results]]
+    colors = ["#d32f2f" if r["fdr_sig"] else "#1976d2" for r in results]
+    ax.bar(range(len(roi_names)), means, yerr=errs, color=colors, alpha=0.85, capsize=5)
+    ax.set_xticks(range(len(roi_names)))
+    ax.set_xticklabels(roi_names, rotation=30, ha="right", fontsize=9)
+    ax.set_ylabel("ΔP (group ablation)")
+    ax.set_title("ROI Group Ablation (all channels zeroed simultaneously)\n"
+                 "dark red = FDR-sig (BH, p<0.05)  |  blue = not sig")
+    ax.axhline(0, color="k", linewidth=0.5)
+    for i, r in enumerate(results):
+        if r["fdr_sig"]:
+            ax.text(i, means[i] + 0.001 * np.sign(means[i]), "*",
+                    ha="center", fontsize=16, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(out_dir / "roi_group_ablation_plot.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    decision.set_envelopes(att, unatt)  # restore
+    return results
+
+
+# ══════════════════════════════════════════════════════════════════════
+# SECTION E3 — Cumulative Top-K Ablation
+# ══════════════════════════════════════════════════════════════════════
+
+def run_topk_ablation(decision, eeg, att, unatt, combined_channels,
+                      n_boot, n_perm, seed, out_dir, k_values=None):
+    """Zero top-K most important channels simultaneously and measure ΔP.
+
+    Channels are ranked by absolute occlusion score (highest = most important).
+    BH-FDR is applied over len(k_values) tests.
+    Saves: topk_ablation.csv, topk_ablation_plot.png
+    """
+    if k_values is None:
+        k_values = [5, 10, 15, 20]
+
+    print("\n" + "=" * 70)
+    print("SECTION E3: CUMULATIVE TOP-K ABLATION")
+    print("=" * 70)
+
+    # Rank channels by |occ_score| descending
+    ranked = sorted(combined_channels, key=lambda c: abs(c["occ_score"]), reverse=True)
+    ranked_indices = [c["channel"] for c in ranked]
+
+    base_probs = get_attended_prob(decision, eeg, att, unatt)
+
+    results = []
+    p_raw = []
+
+    for k_idx, k in enumerate(k_values):
+        top_chs = ranked_indices[:k]
+        top_names = [combined_channels[ch]["electrode_name"] for ch in top_chs]
+
+        eeg_m = eeg.clone()
+        for ch in top_chs:
+            eeg_m[:, :, ch] = 0.0
+        abl_probs = get_attended_prob(decision, eeg_m, att, unatt)
+        dp_pw = base_probs - abl_probs
+
+        mean_dp, ci_lo, ci_hi = bootstrap_ci(dp_pw, n_boot, seed=seed + k_idx + 300)
+        pval = sign_flip_p_value(dp_pw, n_perm=n_perm, seed=seed + k_idx + 400)
+
+        p_raw.append(pval)
+        results.append({
+            "k": k,
+            "channel_names": ",".join(top_names),
+            "mean_dp": mean_dp,
+            "ci_lo": ci_lo,
+            "ci_hi": ci_hi,
+            "perm_p": pval,
+        })
+        print(f"  Top-{k:2d}: ΔP={mean_dp:+.5f} [{ci_lo:+.5f},{ci_hi:+.5f}] "
+              f"p={pval:.4f}  channels={','.join(top_names[:5])}{'...' if k > 5 else ''}")
+
+    # BH-FDR over k_values tests
+    fdr_p_arr, fdr_sig_arr = fdr_correction(np.array(p_raw), 0.05)
+    n_sig = int(fdr_sig_arr.sum())
+    for i, r in enumerate(results):
+        r["fdr_p"] = float(fdr_p_arr[i])
+        r["fdr_sig"] = bool(fdr_sig_arr[i])
+
+    print(f"\n  Top-K ablation: {n_sig}/{len(k_values)} k-values FDR-significant")
+    for r in results:
+        sig_str = "FDR-SIG ***" if r["fdr_sig"] else "not sig"
+        print(f"    Top-{r['k']:2d}: ΔP={r['mean_dp']:+.5f}  "
+              f"CI=[{r['ci_lo']:+.5f},{r['ci_hi']:+.5f}]  {sig_str}")
+
+    # CSV
+    fieldnames = ["k", "channel_names", "mean_dp", "ci_lo", "ci_hi",
+                  "perm_p", "fdr_p", "fdr_sig"]
+    with open(out_dir / "topk_ablation.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for r in results:
+            w.writerow({k: r[k] for k in fieldnames})
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ks = [r["k"] for r in results]
+    means = [r["mean_dp"] for r in results]
+    errs = [[r["mean_dp"] - r["ci_lo"] for r in results],
+            [r["ci_hi"] - r["mean_dp"] for r in results]]
+    colors = ["#d32f2f" if r["fdr_sig"] else "#1976d2" for r in results]
+    ax.bar([str(k) for k in ks], means, yerr=errs, color=colors, alpha=0.85, capsize=5)
+    ax.set_xlabel("Top-K channels removed simultaneously")
+    ax.set_ylabel("ΔP (group occlusion)")
+    ax.set_title("Cumulative Top-K Ablation\n"
+                 "dark red = FDR-sig (BH, p<0.05)  |  blue = not sig")
+    ax.axhline(0, color="k", linewidth=0.5)
+    for i, r in enumerate(results):
+        if r["fdr_sig"]:
+            ax.text(i, means[i] + 0.001 * np.sign(means[i]), "*",
+                    ha="center", fontsize=16, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(out_dir / "topk_ablation_plot.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    decision.set_envelopes(att, unatt)  # restore
+    return results
+
+
+# ══════════════════════════════════════════════════════════════════════
 # SECTION G — Subject Specificity Analysis
 # ══════════════════════════════════════════════════════════════════════
 
@@ -3579,6 +3771,18 @@ def main():
                                    args.n_boot, args.seed, out_dir, montage,
                                    n_perm=args.n_perm)
 
+    # ── Section E2: ROI Group Ablation ────────────────────────────
+    roi_group_ablation = run_roi_group_ablation(
+        decision, eeg_all, att_all, unatt_all,
+        montage, args.n_boot, args.n_perm, args.seed, out_dir)
+    decision.set_envelopes(att_all, unatt_all)
+
+    # ── Section E3: Cumulative Top-K Ablation ─────────────────────
+    topk_ablation = run_topk_ablation(
+        decision, eeg_all, att_all, unatt_all,
+        combined_channels, args.n_boot, args.n_perm, args.seed, out_dir)
+    decision.set_envelopes(att_all, unatt_all)
+
     # ── Section F: Frequency Analysis ─────────────────────────────
     freq_by_channel = []
     freq_by_roi = []
@@ -3670,6 +3874,8 @@ def main():
     config["n_hier_sig_channels"] = hier_result.get("n_hier_sig", 0)
     config["combined_roi_occ_sig"] = combined_roi_result.get("occ", {}).get("significant", False)
     config["combined_roi_perm_sig"] = combined_roi_result.get("perm", {}).get("significant", False)
+    config["n_roi_group_ablation_sig"] = sum(1 for r in roi_group_ablation if r.get("fdr_sig"))
+    config["n_topk_ablation_sig"] = sum(1 for r in topk_ablation if r.get("fdr_sig"))
     save_json(config, out_dir / "run_config.json")
 
     n_t1 = len(subject_val.get("hc", []))
@@ -3688,6 +3894,10 @@ def main():
           f"(p={occ_p_cr:.4f})")
     print(f"  Combined core ROI (perm):            {'SIG' if cr_perm_sig else 'not sig'} "
           f"(p={perm_p_cr:.4f})")
+    n_roi_grp_sig = sum(1 for r in roi_group_ablation if r.get("fdr_sig"))
+    n_topk_sig = sum(1 for r in topk_ablation if r.get("fdr_sig"))
+    print(f"  ROI group ablation FDR-sig:          {n_roi_grp_sig}/9 ROIs")
+    print(f"  Top-K ablation FDR-sig:              {n_topk_sig}/{len(topk_ablation)} k-values")
     sh = subject_val.get("split_half", {})
     if sh:
         print(f"  Split-half reliability (median r):  {sh.get('median_rho', float('nan')):.3f}")
