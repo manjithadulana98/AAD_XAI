@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="1300" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <!-- TITLE -->
+    <mxCell id="title" value="FDR Correction — AAD XAI Pipeline (Section C)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=15;fontStyle=1;fontColor=#1B3669;" vertex="1" parent="1">
+      <mxGeometry x="30" y="20" width="830" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="sub" value="Benjamini-Hochberg · 64 EEG channels · α = 0.05" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#4A5F7A;" vertex="1" parent="1">
+      <mxGeometry x="30" y="50" width="830" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- ── STEP 1: INPUTS ─────────────────────────────────────── -->
+    <mxCell id="in_occ" value="&lt;b&gt;Occlusion p-values&lt;/b&gt;&lt;br&gt;64 channels · bootstrap null&lt;br&gt;&lt;font color=&quot;#4A5F7A&quot;&gt;p = Pr( |bootstrap mean ΔP| ≥ |observed ΔP| )&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2250A0;fontColor=#1B3669;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="30" y="90" width="370" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="in_perm" value="&lt;b&gt;Permutation p-values&lt;/b&gt;&lt;br&gt;64 channels · sign-flip null&lt;br&gt;&lt;font color=&quot;#4A5F7A&quot;&gt;p = Pr( |sign-flip mean ΔP| ≥ |observed ΔP| )&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2250A0;fontColor=#1B3669;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="490" y="90" width="370" height="80" as="geometry" />
+    </mxCell>
+
+    <!-- ── STEP 2: BH PROCEDURE ───────────────────────────────── -->
+    <mxCell id="bh" value="&lt;b&gt;BENJAMINI-HOCHBERG PROCEDURE — applied independently to each set of 64&lt;/b&gt;&lt;br&gt;&lt;br&gt;STEP 1 — Sort 64 p-values ascending: p₁ ≤ p₂ ≤ … ≤ p₆₄&lt;br&gt;STEP 2 — Compute BH threshold for rank k: threshold_k = (k ÷ 64) × α&lt;br&gt;STEP 3 — Adjusted p_k = min( p_k × 64/k, adjusted p_{k+1} ) — backward propagation ensures monotonicity&lt;br&gt;STEP 4 — Mark channel significant if adjusted p &amp;lt; α = 0.05" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1B3669;strokeColor=#0F2147;fontColor=#E8F0FA;align=left;verticalAlign=middle;fontSize=10;spacingLeft=12;spacingRight=12;spacingTop=8;spacingBottom=8;" vertex="1" parent="1">
+      <mxGeometry x="30" y="240" width="830" height="150" as="geometry" />
+    </mxCell>
+
+    <!-- ── STEP 3: FDR FLAGS ──────────────────────────────────── -->
+    <mxCell id="flag_occ" value="&lt;b&gt;occ_fdr_significant&lt;/b&gt;&lt;br&gt;Boolean array · 64 values&lt;br&gt;&lt;font color=&quot;#4A5F7A&quot;&gt;true → occlusion ΔP survives FDR&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F0FC;strokeColor=#1D4280;fontColor=#1B3669;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="30" y="460" width="370" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="flag_perm" value="&lt;b&gt;perm_fdr_significant&lt;/b&gt;&lt;br&gt;Boolean array · 64 values&lt;br&gt;&lt;font color=&quot;#4A5F7A&quot;&gt;true → permutation ΔP survives FDR&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F0FC;strokeColor=#1D4280;fontColor=#1B3669;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="490" y="460" width="370" height="80" as="geometry" />
+    </mxCell>
+
+    <!-- ── STEP 4: PER-CHANNEL COMBINATION ───────────────────── -->
+    <mxCell id="combo" value="&lt;b&gt;PER-CHANNEL COMBINATION — evaluated for all 64 channels&lt;/b&gt;&lt;br&gt;&lt;br&gt;same_sign = occ ΔP and perm ΔP agree in sign (both facilitatory or both suppressive)&lt;br&gt;at_least_one_fdr = occ_fdr_sig OR perm_fdr_sig&lt;br&gt;both_fdr = occ_fdr_sig AND perm_fdr_sig&lt;br&gt;stable_50 = ≥ 50% of subjects agree on sign direction&lt;br&gt;stable_60 = ≥ 60% of subjects agree on sign direction&lt;br&gt;top_20 = channel rank ≤ 20 by combined Z-score" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#253658;strokeColor=#1C2A45;fontColor=#E0E8F5;align=left;verticalAlign=middle;fontSize=10;spacingLeft=12;spacingRight=12;spacingTop=8;spacingBottom=8;" vertex="1" parent="1">
+      <mxGeometry x="30" y="610" width="830" height="170" as="geometry" />
+    </mxCell>
+
+    <!-- ── STEP 5: SIGNIFICANCE GATES ────────────────────────── -->
+    <mxCell id="gate_r" value="&lt;b&gt;ROBUST SIGNIFICANCE GATE&lt;/b&gt;&lt;br&gt;&lt;br&gt;✓ same_sign — both methods agree on direction&lt;br&gt;✓ at_least_one_fdr — at least one method passes FDR&lt;br&gt;✓ stable_50 — majority of subjects replicate sign" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#145232;strokeColor=#2E8B57;fontColor=#E0F4E9;align=left;verticalAlign=middle;fontSize=10;spacingLeft=10;spacingRight=10;" vertex="1" parent="1">
+      <mxGeometry x="30" y="860" width="370" height="120" as="geometry" />
+    </mxCell>
+    <mxCell id="gate_hc" value="&lt;b&gt;HIGH-CONFIDENCE GATE&lt;/b&gt;&lt;br&gt;&lt;br&gt;✓ same_sign — both methods agree on direction&lt;br&gt;✓ both_fdr — BOTH occlusion AND permutation pass FDR&lt;br&gt;✓ stable_60 — 60% of subjects replicate sign&lt;br&gt;✓ top_20 — channel rank ≤ 20 by combined Z-score" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6B3500;strokeColor=#B45309;fontColor=#FEF3E2;align=left;verticalAlign=middle;fontSize=10;spacingLeft=10;spacingRight=10;" vertex="1" parent="1">
+      <mxGeometry x="490" y="860" width="370" height="120" as="geometry" />
+    </mxCell>
+
+    <!-- ── STEP 6: OUTPUTS ────────────────────────────────────── -->
+    <mxCell id="out_r" value="&lt;b style=&quot;font-size:18px;&quot;&gt;~45 / 64&lt;/b&gt;&lt;br&gt;&lt;b&gt;Robust Channels&lt;/b&gt;&lt;br&gt;Broader set · spatial, ROI, frequency analysis" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5EE;strokeColor=#2E8B57;fontColor=#145232;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="30" y="1060" width="370" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="out_hc" value="&lt;b style=&quot;font-size:18px;&quot;&gt;~10–15 / 64&lt;/b&gt;&lt;br&gt;&lt;b&gt;High-Confidence Channels&lt;/b&gt;&lt;br&gt;Strict subset · supervisor-ready claims" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#B45309;fontColor=#6B3500;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="490" y="1060" width="370" height="90" as="geometry" />
+    </mxCell>
+
+    <!-- ── EDGES ──────────────────────────────────────────────── -->
+    <!-- inputs → BH (merge) -->
+    <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;strokeColor=#6B85AB;strokeWidth=2;" edge="1" source="in_occ" target="bh" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;strokeColor=#6B85AB;strokeWidth=2;" edge="1" source="in_perm" target="bh" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- BH → flags (split) -->
+    <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#6B85AB;strokeWidth=2;" edge="1" source="bh" target="flag_occ" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#6B85AB;strokeWidth=2;" edge="1" source="bh" target="flag_perm" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- flags → combo (merge) -->
+    <mxCell id="e5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;strokeColor=#6B85AB;strokeWidth=2;" edge="1" source="flag_occ" target="combo" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;strokeColor=#6B85AB;strokeWidth=2;" edge="1" source="flag_perm" target="combo" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- combo → gates (split) -->
+    <mxCell id="e7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#6B85AB;strokeWidth=2;" edge="1" source="combo" target="gate_r" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#6B85AB;strokeWidth=2;" edge="1" source="combo" target="gate_hc" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- gates → outputs -->
+    <mxCell id="e9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#2E8B57;strokeWidth=2;" edge="1" source="gate_r" target="out_r" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#B45309;strokeWidth=2;" edge="1" source="gate_hc" target="out_hc" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+  </root>
+</mxGraphModel>

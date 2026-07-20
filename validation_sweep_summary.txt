@@ -1,0 +1,14 @@
+VALIDATION SWEEP SUMMARY
+Date: 2026-05-21T00:49:19.173350
+Dry run: False
+Bootstrap: 2000
+Balanced by subject: True
+
+  N=1000              : OK     (15294.2s) -> C:\Users\Manjitha.K\Downloads\aad_xai_starter\xai_results_focused_n1000_20260520_2034
+
+Available run folders for comparison:
+  C:\Users\Manjitha.K\Downloads\aad_xai_starter\xai_results_focused
+  C:\Users\Manjitha.K\Downloads\aad_xai_starter\xai_results_focused_n1000_20260520_2034
+
+Next step:
+  python scripts/compare_validation_runs.py --runs C:\Users\Manjitha.K\Downloads\aad_xai_starter\xai_results_focused C:\Users\Manjitha.K\Downloads\aad_xai_starter\xai_results_focused_n1000_20260520_2034 --output-dir xai_results_validation_comparison

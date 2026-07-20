@@ -1,0 +1,12 @@
+{
+  "total_params": 1740289,
+  "components": {
+    "extractor": 1575936,
+    "block_denses": 33024,
+    "output_context": 131264,
+    "final_dense": 65
+  },
+  "shared_pct": 0.981023841442427,
+  "architecture": "VLAAI: 4-iteration recurrent CNN with shared extractor + output_context",
+  "forward_pass": "x=0; for i in 0..3: x=output_context(block_denses[i](extractor(eeg+x))); out=final_dense(x)"
+}

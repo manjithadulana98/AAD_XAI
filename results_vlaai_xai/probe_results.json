@@ -1,0 +1,161 @@
+{
+  "attention": {
+    "extractor.blocks.0.conv_0": 0.65,
+    "extractor.blocks.0.ln_0": 0.575,
+    "extractor.blocks.0.act_0": 0.6,
+    "extractor.blocks.0.pad_0": 0.6,
+    "extractor.blocks.1.conv_1": 0.575,
+    "extractor.blocks.1.ln_1": 0.525,
+    "extractor.blocks.1.act_1": 0.525,
+    "extractor.blocks.1.pad_1": 0.525,
+    "extractor.blocks.2.conv_2": 0.55,
+    "extractor.blocks.2.ln_2": 0.5,
+    "extractor.blocks.2.act_2": 0.55,
+    "extractor.blocks.2.pad_2": 0.55,
+    "extractor.blocks.3.conv_3": 0.5,
+    "extractor.blocks.3.ln_3": 0.575,
+    "extractor.blocks.3.act_3": 0.5,
+    "extractor.blocks.3.pad_3": 0.5,
+    "extractor.blocks.4.conv_4": 0.425,
+    "extractor.blocks.4.ln_4": 0.475,
+    "extractor.blocks.4.act_4": 0.425,
+    "extractor.blocks.4.pad_4": 0.425,
+    "extractor": 0.425,
+    "block_denses.0": 0.5,
+    "output_context.pad": 0.55,
+    "output_context.conv": 0.55,
+    "output_context.ln": 0.625,
+    "output_context.act": 0.625,
+    "output_context": 0.625,
+    "block_denses.1": 0.6,
+    "block_denses.2": 0.5,
+    "block_denses.3": 0.55,
+    "final_dense": 0.6
+  },
+  "auditory": {
+    "extractor.blocks.0.conv_0": {
+      "amplitude": 0.225,
+      "onset": NaN
+    },
+    "extractor.blocks.0.ln_0": {
+      "amplitude": 0.225,
+      "onset": NaN
+    },
+    "extractor.blocks.0.act_0": {
+      "amplitude": 0.225,
+      "onset": NaN
+    },
+    "extractor.blocks.0.pad_0": {
+      "amplitude": 0.225,
+      "onset": NaN
+    },
+    "extractor.blocks.1.conv_1": {
+      "amplitude": 0.3,
+      "onset": NaN
+    },
+    "extractor.blocks.1.ln_1": {
+      "amplitude": 0.25,
+      "onset": NaN
+    },
+    "extractor.blocks.1.act_1": {
+      "amplitude": 0.325,
+      "onset": NaN
+    },
+    "extractor.blocks.1.pad_1": {
+      "amplitude": 0.325,
+      "onset": NaN
+    },
+    "extractor.blocks.2.conv_2": {
+      "amplitude": 0.375,
+      "onset": NaN
+    },
+    "extractor.blocks.2.ln_2": {
+      "amplitude": 0.3,
+      "onset": NaN
+    },
+    "extractor.blocks.2.act_2": {
+      "amplitude": 0.325,
+      "onset": NaN
+    },
+    "extractor.blocks.2.pad_2": {
+      "amplitude": 0.325,
+      "onset": NaN
+    },
+    "extractor.blocks.3.conv_3": {
+      "amplitude": 0.45,
+      "onset": NaN
+    },
+    "extractor.blocks.3.ln_3": {
+      "amplitude": 0.35,
+      "onset": NaN
+    },
+    "extractor.blocks.3.act_3": {
+      "amplitude": 0.375,
+      "onset": NaN
+    },
+    "extractor.blocks.3.pad_3": {
+      "amplitude": 0.375,
+      "onset": NaN
+    },
+    "extractor.blocks.4.conv_4": {
+      "amplitude": 0.375,
+      "onset": NaN
+    },
+    "extractor.blocks.4.ln_4": {
+      "amplitude": 0.3,
+      "onset": NaN
+    },
+    "extractor.blocks.4.act_4": {
+      "amplitude": 0.325,
+      "onset": NaN
+    },
+    "extractor.blocks.4.pad_4": {
+      "amplitude": 0.325,
+      "onset": NaN
+    },
+    "extractor": {
+      "amplitude": 0.325,
+      "onset": NaN
+    },
+    "block_denses.0": {
+      "amplitude": 0.175,
+      "onset": NaN
+    },
+    "output_context.pad": {
+      "amplitude": 0.25,
+      "onset": NaN
+    },
+    "output_context.conv": {
+      "amplitude": 0.275,
+      "onset": NaN
+    },
+    "output_context.ln": {
+      "amplitude": 0.35,
+      "onset": NaN
+    },
+    "output_context.act": {
+      "amplitude": 0.35,
+      "onset": NaN
+    },
+    "output_context": {
+      "amplitude": 0.35,
+      "onset": NaN
+    },
+    "block_denses.1": {
+      "amplitude": 0.325,
+      "onset": NaN
+    },
+    "block_denses.2": {
+      "amplitude": 0.225,
+      "onset": NaN
+    },
+    "block_denses.3": {
+      "amplitude": 0.275,
+      "onset": NaN
+    },
+    "final_dense": {
+      "amplitude": 0.35,
+      "onset": NaN
+    }
+  }
+}

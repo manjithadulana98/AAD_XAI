@@ -1,0 +1,22 @@
+EXTENDED XAI ANALYSIS SUMMARY
+==================================================
+Dataset: 8100 windows total, 200 used for core analysis
+
+--- SUBJECT-WISE CONSISTENCY ---
+Subjects analysed: 18
+Cross-subject channel r: -0.007 ± 0.218
+Most consistent ROI across subjects: Occipital
+Most variable ROI across subjects: Fronto-Central
+
+--- FREQUENCY-BAND IMPORTANCE ---
+  delta (0.5-4 Hz)         : |ΔP| = 0.00783
+  theta (4-8 Hz)           : |ΔP| = 0.01064
+  alpha (8-13 Hz)          : |ΔP| = 0.00151
+  beta (13-30 Hz)          : |ΔP| = 0.00884
+Most important band: theta (4-8 Hz)
+
+--- CORRECT vs INCORRECT ---
+Correct: 149 windows, Incorrect: 51 windows
+Overall accuracy: 74.5%
+Largest channel importance difference: Ch 7 (diff=+0.01225)
+Largest ROI importance difference: Occipital (54-63)
