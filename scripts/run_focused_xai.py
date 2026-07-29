@@ -84,6 +84,14 @@ def parse_args():
     p.add_argument("--device", type=str, default="cpu")
     p.add_argument("--skip-ig", action="store_true", help="Skip Integrated Gradients.")
     p.add_argument("--skip-frequency", action="store_true", help="Skip frequency analysis.")
+    p.add_argument("--skip-sanity-checks", action="store_true",
+                   help="Skip cascading-randomization sanity checks (Section I).")
+    p.add_argument("--skip-faithfulness", action="store_true",
+                   help="Skip deletion/insertion faithfulness curves (Section J).")
+    p.add_argument("--faithfulness-k-step", type=int, default=4,
+                   help="Channel-count step size for the deletion/insertion K sweep.")
+    p.add_argument("--faithfulness-random-perms", type=int, default=20,
+                   help="Number of random-ordering replicates for the faithfulness control curve.")
     return p.parse_args()
 
 
@@ -3346,6 +3354,296 @@ def run_combined_roi_analysis(subj_occ, subj_perm, unique_subjects, montage,
 
 
 # ══════════════════════════════════════════════════════════════════════
+# SECTION I — Sanity checks (Adebayo et al. cascading parameter randomization)
+# ══════════════════════════════════════════════════════════════════════
+
+def run_sanity_checks(model, eeg_all, att_all, unatt_all, args, out_dir):
+    """Cascading-randomization sanity check (Adebayo et al., 2018).
+
+    Reuses the generic, deep-copy-safe `cascading_randomization` helper already
+    implemented in `aad_xai.xai.sanity_checks` (see also scripts/run_vlaai_xai.py
+    for the reference usage pattern this mirrors). Progressively re-initialises
+    VLAAI's top-level modules from the output backward (final_dense ->
+    output_context -> block_denses -> extractor) and recomputes channel
+    occlusion and IG on the same fixed ~n_ig-window subsample already used for
+    Integrated Gradients, reporting Spearman rank-correlation between each
+    randomized depth's channel-importance vector and the trained model's own.
+
+    A faithful attribution method's rank-correlation should decay toward 0 as
+    more layers are randomised. If it does not, this is reported as an explicit
+    finding (per Adebayo et al.'s own framing), not treated as a bug.
+
+    `model` must be the raw VLAAIPyTorch instance, not the AADDecisionEEGOnly
+    wrapper -- passing the wrapper degenerates the cascade to a single step
+    (it has only one named child, `decoder`), the mistake already present in
+    scripts/run_xai_comprehensive.py's section_g.
+    """
+    print("\n" + "=" * 70)
+    print("SECTION I: SANITY CHECKS (cascading parameter randomization)")
+    print("=" * 70)
+
+    from scipy.stats import spearmanr
+    from aad_xai.models import AADDecisionEEGOnly
+    from aad_xai.xai import cascading_randomization
+
+    n_ig = min(args.n_ig, eeg_all.shape[0])
+    eeg_fixed = eeg_all[:n_ig].clone()
+    att_fixed = att_all[:n_ig].clone()
+    unatt_fixed = unatt_all[:n_ig].clone()
+
+    def occlusion_attr_fn(m, x):
+        d = AADDecisionEEGOnly(m)
+        d.eval().to(x.device)
+        base = get_attended_prob(d, x, att_fixed, unatt_fixed)
+        drops = np.zeros(64, dtype=np.float64)
+        for ch in range(64):
+            xm = x.clone()
+            xm[:, :, ch] = 0.0
+            m_p = get_attended_prob(d, xm, att_fixed, unatt_fixed)
+            drops[ch] = float((base - m_p).mean())
+        return torch.from_numpy(drops)
+
+    def ig_attr_fn(m, x):
+        d = AADDecisionEEGOnly(m)
+        d.eval().to(x.device)
+        # Explicit local override: cascading_randomization calls attr_fn inside
+        # an outer torch.no_grad(); IG needs an active gradient tape regardless
+        # of whether captum re-enables it internally.
+        with torch.enable_grad():
+            ch_importance, _ = compute_integrated_gradients_summary(
+                d, x, att_fixed, unatt_fixed, n_ig=x.shape[0], ig_steps=args.ig_steps)
+        return torch.from_numpy(np.asarray(ch_importance, dtype=np.float64))
+
+    rows = []
+    depth_order = {}
+    for method_name, attr_fn in [("occlusion", occlusion_attr_fn), ("ig", ig_attr_fn)]:
+        print(f"  Running cascading randomization for method={method_name} ...")
+        try:
+            cascade = cascading_randomization(model, attr_fn, eeg_fixed)
+        except Exception as exc:
+            print(f"  WARNING: cascading randomization failed for method={method_name}: {exc}")
+            traceback.print_exc()
+            rows.append({"model": "VLAAI", "randomization_depth": "not_run_error",
+                         "method": method_name, "spearman_rho": None, "p_value": None})
+            continue
+
+        orig_vec = cascade["__original__"]
+        rows.append({"model": "VLAAI", "randomization_depth": "original",
+                     "method": method_name, "spearman_rho": 1.0, "p_value": 0.0})
+
+        depth_names = [k for k in cascade.keys() if k != "__original__"]
+        last_rho = None
+        for i, depth_name in enumerate(depth_names):
+            depth_order.setdefault(depth_name, i + 1)
+            rho, p_val = spearmanr(orig_vec, cascade[depth_name])
+            rho = 0.0 if np.isnan(rho) else float(rho)
+            p_val = 1.0 if np.isnan(p_val) else float(p_val)
+            rows.append({"model": "VLAAI", "randomization_depth": depth_name,
+                         "method": method_name, "spearman_rho": rho, "p_value": p_val})
+            print(f"    depth={depth_name:16s} rho={rho:+.3f} p={p_val:.4f}")
+            last_rho = rho
+
+        if depth_names and last_rho is not None and last_rho > 0.5:
+            print(
+                f"  FINDING (not a bug): {method_name} rank-correlation did NOT collapse "
+                f"toward 0 after full randomization (rho={last_rho:+.3f} at deepest depth "
+                f"'{depth_names[-1]}'). Report this as a sanity-check finding, per Adebayo "
+                "et al.'s own framing -- it suggests this attribution method may be "
+                "insensitive to the trained weights at this depth."
+            )
+
+    # Label-randomization control: no infrastructure exists in this repo.
+    print(
+        "  Label-randomization control: NOT RUN -- no label-shuffled checkpoint or "
+        "label-shuffling training script exists anywhere in this repository (verified "
+        "by repo-wide search). Documented here as a limitation, not silently skipped."
+    )
+    rows.append({"model": "VLAAI", "randomization_depth": "label_shuffle_control",
+                 "method": "not_available", "spearman_rho": None, "p_value": None})
+
+    csv_path = out_dir / "sanity_check_results.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["model", "randomization_depth", "method", "spearman_rho", "p_value"])
+        w.writeheader()
+        w.writerows(rows)
+    print(f"  Saved {csv_path.name} ({len(rows)} rows)")
+
+    # Plot: rho vs. randomization depth, per method.
+    plot_rows = [r for r in rows if r["randomization_depth"] not in ("label_shuffle_control", "not_run_error")]
+    depth_labels = ["original"] + sorted(
+        {r["randomization_depth"] for r in plot_rows if r["randomization_depth"] != "original"},
+        key=lambda d: depth_order.get(d, 999))
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for method_name in ["occlusion", "ig"]:
+        method_vals = {r["randomization_depth"]: r["spearman_rho"] for r in plot_rows if r["method"] == method_name}
+        xs, ys = [], []
+        for i, d in enumerate(depth_labels):
+            if method_vals.get(d) is not None:
+                xs.append(i)
+                ys.append(method_vals[d])
+        if ys:
+            ax.plot(xs, ys, marker="o", label=method_name)
+    ax.set_xticks(range(len(depth_labels)))
+    ax.set_xticklabels(depth_labels, rotation=30, ha="right")
+    ax.set_ylabel("Spearman rho vs. trained model")
+    ax.set_title("Cascading Randomization Sanity Check (VLAAI)")
+    ax.axhline(0, color="k", linewidth=0.5)
+    ax.legend(fontsize=8)
+    plt.tight_layout()
+    plt.savefig(out_dir / "sanity_check_rho_vs_depth.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  Saved sanity_check_rho_vs_depth.png")
+
+    return rows
+
+
+# ══════════════════════════════════════════════════════════════════════
+# SECTION J — Deletion / Insertion Faithfulness
+# ══════════════════════════════════════════════════════════════════════
+
+def run_faithfulness_curves(decision, eeg, att, unatt, combined_channels,
+                            n_boot, seed, out_dir, k_step=4, n_random_perms=20):
+    """Deletion/insertion faithfulness metric (Petsiuk et al. / Samek et al. style).
+
+    Extends the existing cumulative top-K ablation pattern (`run_topk_ablation`,
+    same "zero these K channels in one forward pass" mechanic) along two axes:
+      - sweeps K = 0, k_step, 2*k_step, ..., 64 (instead of just [5,10,15,20])
+      - tracks accuracy (not just DeltaP), in both directions:
+          deletion:  start from the clean input, zero the top-K channels by
+                     `combined_score` (or a random K-set), measure accuracy.
+          insertion: start from a fully-zeroed input, restore the top-K
+                     channels (or a random K-set), measure accuracy.
+      - adds a random-channel-ordering control curve (mean +/- percentile CI
+        over n_random_perms=20 independent random orderings) alongside the
+        deterministic `combined_score`-ranked curve.
+
+    The AUC of each accuracy-vs-K curve is reported for both rankings; a
+    larger gap between the ranked and random AUCs is the faithfulness signal
+    -- a genuinely informative ranking should make deletion hurt accuracy
+    faster (lower AUC) and insertion help accuracy faster (higher AUC) than a
+    random ordering. If no clear gap appears, this is reported as an explicit
+    finding, not treated as a bug.
+
+    Saves: faithfulness_results.csv, faithfulness_auc_summary.json,
+    deletion_insertion_curves.png
+
+    Cost note: this runs (n K-values) x (1 ranked + n_random_perms random) x
+    (2 directions) forward passes over the full window set -- substantially
+    more than any other section in this pipeline. With the defaults
+    (k_step=4 -> 17 K-values, n_random_perms=20) that is 17*21*2 = 714 forward
+    passes; consider a smaller --max-samples run first to gauge wall-clock
+    cost before a full run.
+    """
+    print("\n" + "=" * 70)
+    print("SECTION J: DELETION/INSERTION FAITHFULNESS")
+    print("=" * 70)
+
+    ranked_indices = [c["channel"] for c in
+                      sorted(combined_channels, key=lambda c: abs(c["combined_score"]), reverse=True)]
+    k_values = list(range(0, 65, k_step))
+    if k_values[-1] != 64:
+        k_values.append(64)
+    print(f"  K sweep: {k_values}  ({len(k_values)} values)  "
+          f"random control: {n_random_perms} permutations/K  "
+          f"-> ~{len(k_values) * (1 + n_random_perms) * 2} forward passes")
+
+    rng = np.random.RandomState(seed + 9000)
+
+    def accuracy_for_mask(channels_present):
+        """channels_present: iterable of channel indices left un-zeroed; all
+        others are zeroed. Returns per-window P(attended)."""
+        eeg_m = torch.zeros_like(eeg)
+        present = sorted(channels_present)
+        if present:
+            idx_t = torch.as_tensor(present, dtype=torch.long, device=eeg.device)
+            eeg_m.index_copy_(2, idx_t, eeg.index_select(2, idx_t))
+        return get_attended_prob(decision, eeg_m, att, unatt)
+
+    rows = []
+    curve_store = {}  # (direction, ranking) -> {k: mean_accuracy}
+
+    for direction in ["deletion", "insertion"]:
+        for ranking in ["combined_score", "random"]:
+            curve_store[(direction, ranking)] = {}
+            for k_idx, k in enumerate(k_values):
+                if ranking == "combined_score":
+                    present = set(ranked_indices[k:]) if direction == "deletion" else set(ranked_indices[:k])
+                    probs = accuracy_for_mask(present)
+                    correct = (probs > 0.5).astype(np.float64)
+                    acc_mean, acc_lo, acc_hi = bootstrap_ci(correct, n_boot, seed=seed + k_idx + 500)
+                else:
+                    # Random control: variability is across independent random
+                    # orderings, not across windows -- percentile CI over the
+                    # n_random_perms replicate accuracies (a different kind of
+                    # uncertainty than the bootstrap-over-windows CI above).
+                    accs = []
+                    for _ in range(n_random_perms):
+                        perm = rng.permutation(64)
+                        present = set(perm[k:]) if direction == "deletion" else set(perm[:k])
+                        probs = accuracy_for_mask(present)
+                        accs.append(float((probs > 0.5).mean()))
+                    acc_mean = float(np.mean(accs))
+                    if n_random_perms > 1:
+                        acc_lo, acc_hi = float(np.percentile(accs, 2.5)), float(np.percentile(accs, 97.5))
+                    else:
+                        acc_lo, acc_hi = acc_mean, acc_mean
+
+                curve_store[(direction, ranking)][k] = acc_mean
+                rows.append({"model": "VLAAI", "direction": direction, "ranking": ranking,
+                             "K": k, "mean_accuracy": acc_mean, "ci_low": acc_lo, "ci_high": acc_hi})
+            print(f"  {direction:9s} {ranking:14s} done "
+                  f"(K=0 acc={curve_store[(direction, ranking)][0]:.3f}, "
+                  f"K=64 acc={curve_store[(direction, ranking)][64]:.3f})")
+
+    decision.set_envelopes(att, unatt)  # restore persistent state
+
+    fieldnames = ["model", "direction", "ranking", "K", "mean_accuracy", "ci_low", "ci_high"]
+    with open(out_dir / "faithfulness_results.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(rows)
+    print(f"  Saved faithfulness_results.csv ({len(rows)} rows)")
+
+    # AUC per (direction, ranking) -- trapezoidal, normalised to [0,1] by K-range.
+    auc_summary = {}
+    for (direction, ranking), curve in curve_store.items():
+        ks_sorted = sorted(curve.keys())
+        ys = [curve[k] for k in ks_sorted]
+        auc = float(np.trapz(ys, x=ks_sorted) / (ks_sorted[-1] - ks_sorted[0]))
+        auc_summary.setdefault(direction, {})[ranking] = auc
+    for direction in ["deletion", "insertion"]:
+        gap = auc_summary[direction]["combined_score"] - auc_summary[direction]["random"]
+        auc_summary[direction]["gap"] = gap
+        faithful = (gap < 0) if direction == "deletion" else (gap > 0)
+        verdict = "faithfulness signal present" if faithful else \
+            "no clear faithfulness gap -- report as a finding, not a bug"
+        print(f"  {direction} AUC: combined_score={auc_summary[direction]['combined_score']:.4f}  "
+              f"random={auc_summary[direction]['random']:.4f}  gap={gap:+.4f}  ({verdict})")
+    with open(out_dir / "faithfulness_auc_summary.json", "w", encoding="utf-8") as f:
+        json.dump(auc_summary, f, indent=2)
+    print("  Saved faithfulness_auc_summary.json")
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=True)
+    for ax, direction in zip(axes, ["deletion", "insertion"]):
+        for ranking, color in [("combined_score", "#1976d2"), ("random", "#9e9e9e")]:
+            curve = curve_store[(direction, ranking)]
+            ks_sorted = sorted(curve.keys())
+            ax.plot(ks_sorted, [curve[k] for k in ks_sorted], marker="o", label=ranking, color=color)
+        ax.set_xlabel("K channels " + ("removed" if direction == "deletion" else "restored"))
+        ax.set_title(direction.capitalize())
+        ax.legend(fontsize=8)
+    axes[0].set_ylabel("Accuracy")
+    fig.suptitle("Deletion / Insertion Faithfulness (VLAAI)")
+    plt.tight_layout()
+    plt.savefig(out_dir / "deletion_insertion_curves.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  Saved deletion_insertion_curves.png")
+
+    return rows, auc_summary
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Publication summary
 # ══════════════════════════════════════════════════════════════════════
 
@@ -3849,6 +4147,31 @@ def main():
         subject_val["subj_occ"], subject_val["subj_perm"],
         subject_val["unique_subjects"], montage, out_dir,
         args.n_boot, args.seed)
+
+    # ── Section I: Sanity checks (cascading parameter randomization) ─
+    if not args.skip_sanity_checks:
+        try:
+            run_sanity_checks(model, eeg_all, att_all, unatt_all, args, out_dir)
+        except Exception as exc:
+            print(f"  WARNING: Section I (sanity checks) failed: {exc}")
+            traceback.print_exc()
+        decision.set_envelopes(att_all, unatt_all)
+    else:
+        print("\nSection I (sanity checks) skipped via --skip-sanity-checks.")
+
+    # ── Section J: Deletion/Insertion Faithfulness ────────────────
+    if not args.skip_faithfulness:
+        try:
+            run_faithfulness_curves(
+                decision, eeg_all, att_all, unatt_all, combined_channels,
+                args.n_boot, args.seed, out_dir,
+                k_step=args.faithfulness_k_step, n_random_perms=args.faithfulness_random_perms)
+        except Exception as exc:
+            print(f"  WARNING: Section J (faithfulness curves) failed: {exc}")
+            traceback.print_exc()
+        decision.set_envelopes(att_all, unatt_all)
+    else:
+        print("\nSection J (faithfulness curves) skipped via --skip-faithfulness.")
 
     # ── Publication summary ───────────────────────────────────────
     write_publication_summary(

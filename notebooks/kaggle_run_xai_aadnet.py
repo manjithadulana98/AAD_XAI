@@ -846,3 +846,332 @@ if os.path.exists(_ss_acc_path):
     print(f"\nMean |delta| = {np.mean(np.abs(delta)):.4f}   (should be small; large gap => misload)")
 else:
     print(f"Reference accuracy file not found: {_ss_acc_path}")
+
+# %% [markdown]
+# ## 18. Section I — Sanity checks (Adebayo et al. cascading parameter randomization)
+#
+# Reuses the generic, deep-copy-safe `cascading_randomization` / `randomize_parameters`
+# helpers already implemented in `aad_xai.xai.sanity_checks` (the same infrastructure
+# already wired up for VLAAI in `scripts/run_vlaai_xai.py`) -- nothing in that module
+# is modified here. Scope for this pass: **one representative (subject, fold)** only
+# (per plan), chosen deterministically below; extending to more subjects later only
+# requires looping this cell over `subject_ids` using each subject's fold-0 checkpoint.
+#
+# The cascade targets `model.model` -- the real upstream `AADNet` instance with its 7
+# `named_modules()` top-level children (`batchnorm_1`, `inception_1_eeg`,
+# `inception_1_aud`, `maxpool_1`, `batchnorm_2`, `dropout_1`, `fc1`) -- NOT the
+# `ExternalAADNet` wrapper, which has only one named child (`model`) and would
+# degenerate the cascade to a single step.
+
+# %%
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from scipy.stats import spearmanr as _sanity_spearmanr
+from aad_xai.xai import cascading_randomization
+
+SANITY_CHECK_SUBJECT = subject_ids[0]
+SANITY_CHECK_FOLD = min(fold for (s, fold) in ckpt_index if s == SANITY_CHECK_SUBJECT)
+print(f"[{time.time()-t_start:6.0f}s] SECTION I — sanity checks on subject "
+      f"{SANITY_CHECK_SUBJECT}, fold {SANITY_CHECK_FOLD} (representative case)")
+
+_sanity_ckpt = ckpt_index.get((SANITY_CHECK_SUBJECT, SANITY_CHECK_FOLD))
+if _sanity_ckpt is None:
+    raise RuntimeError(
+        f"Section I: no checkpoint found for subject {SANITY_CHECK_SUBJECT} "
+        f"fold {SANITY_CHECK_FOLD} -- cannot run sanity checks."
+    )
+
+_sanity_model_wrapper = build_aadnet(_sanity_ckpt)
+_sanity_model = _sanity_model_wrapper.model  # raw upstream AADNet -- 7 real named_children
+
+_sanity_samples = samples_by_subject[SANITY_CHECK_SUBJECT]
+_sanity_fold_mask = _sanity_samples["fold_ids"].numpy() == SANITY_CHECK_FOLD
+_sanity_idx = np.where(_sanity_fold_mask)[0]
+if _sanity_idx.size == 0:
+    raise RuntimeError(
+        f"Section I: subject {SANITY_CHECK_SUBJECT} has no windows tagged with "
+        f"fold {SANITY_CHECK_FOLD} -- cannot run sanity checks."
+    )
+_sanity_take = min(N_IG_WINDOWS, _sanity_idx.size)
+_sanity_sel = _sanity_idx[:_sanity_take]  # first `take` windows of this fold, deterministic (mirrors IG's own slicing convention)
+
+eeg_fixed_sanity = _sanity_samples["eeg"][_sanity_sel].to(DEVICE)
+env_fixed_sanity = _sanity_samples["env"][_sanity_sel].to(DEVICE)
+y_fixed_sanity = _sanity_samples["y"][_sanity_sel].to(DEVICE)
+print(f"  Fixed window subsample: {len(_sanity_sel)} windows "
+      f"(min(N_IG_WINDOWS={N_IG_WINDOWS}, available={_sanity_idx.size}))")
+
+del _sanity_model_wrapper
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
+
+def _sanity_occlusion_attr_fn(m, x):
+    """Reuses the existing p_attended/batched_forward helpers unmodified."""
+    base = p_attended(m, x, env_fixed_sanity, y_fixed_sanity)
+    drops = np.zeros(N_CHANNELS, dtype=np.float64)
+    for ch in range(N_CHANNELS):
+        xm = x.clone()
+        xm[:, ch, :] = 0.0
+        m_p = p_attended(m, xm, env_fixed_sanity, y_fixed_sanity)
+        drops[ch] = float((base - m_p).mean())
+    return torch.from_numpy(drops)
+
+
+def _sanity_ig_attr_fn(m, x):
+    """Manual Riemann-sum IG, identical procedure to subject_perturbations()'s IG
+    block. cascading_randomization() calls attr_fn inside an outer torch.no_grad();
+    this hand-rolled autograd computation has no internal grad-context management
+    (unlike VLAAI's captum-based IG), so it MUST locally re-enable gradients or the
+    backward pass fails with "does not require grad and does not have a grad_fn".
+    """
+    with torch.enable_grad():
+        baseline_zero = torch.zeros_like(x)
+        attrs = torch.zeros_like(x)
+        for step in range(IG_STEPS):
+            alpha = (step + 1) / IG_STEPS
+            x_i = baseline_zero + alpha * (x - baseline_zero)
+            x_i.requires_grad_(True)
+            logits = m(x_i, env_fixed_sanity)
+            p = torch.softmax(logits, dim=-1).gather(1, y_fixed_sanity.unsqueeze(1)).squeeze(1)
+            grads = torch.autograd.grad(p.sum(), x_i, retain_graph=False, create_graph=False)[0]
+            attrs = attrs + grads.detach()
+        attrs = attrs / IG_STEPS * (x - baseline_zero)
+        ig_per_win = attrs.abs().mean(dim=-1).detach().cpu().numpy()  # (N, C)
+    ch_importance = ig_per_win.mean(axis=0)  # (C,)
+    return torch.from_numpy(ch_importance.astype(np.float64))
+
+
+_sanity_rows = []
+_sanity_depth_order = {}
+for _method_name, _attr_fn in [("occlusion", _sanity_occlusion_attr_fn), ("ig", _sanity_ig_attr_fn)]:
+    print(f"  Running cascading randomization for method={_method_name} ...")
+    try:
+        _cascade = cascading_randomization(_sanity_model, _attr_fn, eeg_fixed_sanity)
+    except Exception as exc:
+        print(f"  WARNING: cascading randomization failed for method={_method_name}: {exc}")
+        import traceback as _tb
+        _tb.print_exc()
+        _sanity_rows.append({"model": "AADNet", "randomization_depth": "not_run_error",
+                              "method": _method_name, "spearman_rho": None, "p_value": None})
+        continue
+
+    _orig_vec = _cascade["__original__"]
+    _sanity_rows.append({"model": "AADNet", "randomization_depth": "original",
+                          "method": _method_name, "spearman_rho": 1.0, "p_value": 0.0})
+
+    _depth_names = [k for k in _cascade.keys() if k != "__original__"]
+    _last_rho = None
+    for _i, _depth_name in enumerate(_depth_names):
+        _sanity_depth_order.setdefault(_depth_name, _i + 1)
+        _rho, _p_val = _sanity_spearmanr(_orig_vec, _cascade[_depth_name])
+        _rho = 0.0 if np.isnan(_rho) else float(_rho)
+        _p_val = 1.0 if np.isnan(_p_val) else float(_p_val)
+        _sanity_rows.append({"model": "AADNet", "randomization_depth": _depth_name,
+                              "method": _method_name, "spearman_rho": _rho, "p_value": _p_val})
+        _note = ""
+        if _depth_name in ("dropout_1", "maxpool_1"):
+            _note = "  (no-op: has no reset_parameters(), expected to match the prior depth)"
+        print(f"    depth={_depth_name:16s} rho={_rho:+.3f} p={_p_val:.4f}{_note}")
+        _last_rho = _rho
+
+    if _depth_names and _last_rho is not None and _last_rho > 0.5:
+        print(
+            f"  FINDING (not a bug): {_method_name} rank-correlation did NOT collapse "
+            f"toward 0 after full randomization (rho={_last_rho:+.3f} at deepest depth "
+            f"'{_depth_names[-1]}'). Report this as a sanity-check finding, per Adebayo "
+            "et al.'s own framing -- it suggests this attribution method may be "
+            "insensitive to the trained weights at this depth."
+        )
+
+# Label-randomization control: no infrastructure exists in this repo.
+print(
+    "  Label-randomization control: NOT RUN -- no label-shuffled checkpoint or "
+    "label-shuffling training script exists anywhere in this repository (verified "
+    "by repo-wide search). Documented here as a limitation, not silently skipped."
+)
+_sanity_rows.append({"model": "AADNet", "randomization_depth": "label_shuffle_control",
+                      "method": "not_available", "spearman_rho": None, "p_value": None})
+
+pd.DataFrame(_sanity_rows).to_csv(OUT_DIR / "sanity_check_results.csv", index=False)
+print(f"  Saved sanity_check_results.csv ({len(_sanity_rows)} rows)")
+
+# Plot: rho vs. randomization depth, per method.
+_plot_rows = [r for r in _sanity_rows if r["randomization_depth"] not in ("label_shuffle_control", "not_run_error")]
+_depth_labels = ["original"] + sorted(
+    {r["randomization_depth"] for r in _plot_rows if r["randomization_depth"] != "original"},
+    key=lambda d: _sanity_depth_order.get(d, 999))
+
+fig, ax = plt.subplots(figsize=(7, 4))
+for _method_name in ["occlusion", "ig"]:
+    _method_vals = {r["randomization_depth"]: r["spearman_rho"] for r in _plot_rows if r["method"] == _method_name}
+    _xs, _ys = [], []
+    for _i, _d in enumerate(_depth_labels):
+        if _method_vals.get(_d) is not None:
+            _xs.append(_i)
+            _ys.append(_method_vals[_d])
+    if _ys:
+        ax.plot(_xs, _ys, marker="o", label=_method_name)
+ax.set_xticks(range(len(_depth_labels)))
+ax.set_xticklabels(_depth_labels, rotation=30, ha="right")
+ax.set_ylabel("Spearman rho vs. trained model")
+ax.set_title(f"Cascading Randomization Sanity Check (AADNet, subj {SANITY_CHECK_SUBJECT} fold {SANITY_CHECK_FOLD})")
+ax.axhline(0, color="k", linewidth=0.5)
+ax.legend(fontsize=8)
+plt.tight_layout()
+plt.savefig(OUT_DIR / "sanity_check_rho_vs_depth.png", dpi=150, bbox_inches="tight")
+plt.close()
+print(f"  Saved sanity_check_rho_vs_depth.png")
+print(f"[{time.time()-t_start:6.0f}s] Section I complete.")
+
+del _sanity_model
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
+# %% [markdown]
+# ## 19. Section J — Deletion/Insertion Faithfulness
+#
+# Extends the same "zero K channels together, one forward pass" mechanic
+# already used nowhere else in this notebook for AADNet (VLAAI's
+# `run_topk_ablation` is the pattern this mirrors) into a full K=0..64 sweep,
+# in both directions (deletion: remove top-K; insertion: restore top-K into a
+# fully-zeroed input), each compared against a random-ordering control curve
+# (mean +/- percentile CI over 20 permutations).
+#
+# NOTE on ranking: AADNet does not yet have the full `combined_score` /
+# robust / tier machinery VLAAI has (that backfill is Phase 5, not yet
+# implemented). The "combined_score" ranking used here is a lightweight,
+# LOCAL z-score(|occ|) + z-score(|perm|) average computed from the
+# already-available `occ_mean_ch`/`perm_mean_ch` subject-mean vectors --
+# consistent in spirit with VLAAI's real combined_score formula, but not a
+# substitute for the full Phase-5 statistical layer.
+#
+# Scope: same representative (subject, fold) as Section I, per the same
+# reasoning (no documented AADNet runtime numbers exist yet to justify
+# scaling this to all 18 subjects). Loads its own fresh checkpoint
+# independently of Section I so this cell can be run standalone.
+
+# %%
+print(f"[{time.time()-t_start:6.0f}s] SECTION J — deletion/insertion faithfulness on subject "
+      f"{SANITY_CHECK_SUBJECT}, fold {SANITY_CHECK_FOLD} (representative case)")
+
+_zscore_occ = (np.abs(occ_mean_ch) - np.abs(occ_mean_ch).mean()) / (np.abs(occ_mean_ch).std() + 1e-10)
+_zscore_perm = (np.abs(perm_mean_ch) - np.abs(perm_mean_ch).mean()) / (np.abs(perm_mean_ch).std() + 1e-10)
+_local_combined_score = (_zscore_occ + _zscore_perm) / 2.0
+_faith_ranked_indices = list(np.argsort(-_local_combined_score))
+print(f"  Local combined_score top-5 channels: "
+      f"{[CH_NAME[c] for c in _faith_ranked_indices[:5]]}")
+
+_faith_ckpt = ckpt_index.get((SANITY_CHECK_SUBJECT, SANITY_CHECK_FOLD))
+_faith_model_wrapper = build_aadnet(_faith_ckpt)
+_faith_model = _faith_model_wrapper.model
+
+_faith_samples = samples_by_subject[SANITY_CHECK_SUBJECT]
+_faith_fold_mask = _faith_samples["fold_ids"].numpy() == SANITY_CHECK_FOLD
+_faith_idx = np.where(_faith_fold_mask)[0]
+if _faith_idx.size == 0:
+    raise RuntimeError(
+        f"Section J: subject {SANITY_CHECK_SUBJECT} has no windows tagged with "
+        f"fold {SANITY_CHECK_FOLD} -- cannot run faithfulness curves."
+    )
+eeg_faith = _faith_samples["eeg"][_faith_idx]
+env_faith = _faith_samples["env"][_faith_idx]
+y_faith = _faith_samples["y"][_faith_idx]
+print(f"  Using all {len(_faith_idx)} windows of this fold "
+      f"(full forward passes are cheap here via batched_forward, unlike IG).")
+
+_FAITH_K_STEP = 4
+_FAITH_N_RANDOM_PERMS = 20
+_faith_k_values = list(range(0, 65, _FAITH_K_STEP))
+if _faith_k_values[-1] != N_CHANNELS:
+    _faith_k_values.append(N_CHANNELS)
+print(f"  K sweep: {_faith_k_values}  ({len(_faith_k_values)} values)  "
+      f"random control: {_FAITH_N_RANDOM_PERMS} permutations/K  "
+      f"-> ~{len(_faith_k_values) * (1 + _FAITH_N_RANDOM_PERMS) * 2} forward passes")
+
+_faith_rng = np.random.RandomState(RANDOM_SEED + 9000)
+
+
+def _faith_accuracy_for_mask(m, channels_present):
+    eeg_m = torch.zeros_like(eeg_faith)
+    present = sorted(channels_present)
+    if present:
+        idx_t = torch.as_tensor(present, dtype=torch.long)
+        eeg_m.index_copy_(1, idx_t, eeg_faith.index_select(1, idx_t))
+    return p_attended(m, eeg_m, env_faith, y_faith)
+
+
+_faith_rows = []
+_faith_curve_store = {}
+for _direction in ["deletion", "insertion"]:
+    for _ranking in ["combined_score", "random"]:
+        _faith_curve_store[(_direction, _ranking)] = {}
+        for _k_idx, _k in enumerate(_faith_k_values):
+            if _ranking == "combined_score":
+                _present = (set(_faith_ranked_indices[_k:]) if _direction == "deletion"
+                            else set(_faith_ranked_indices[:_k]))
+                _probs = _faith_accuracy_for_mask(_faith_model, _present)
+                _correct = (_probs > 0.5).astype(np.float64)
+                _acc_mean, _acc_lo, _acc_hi = bootstrap_ci(_correct, N_BOOT, seed=RANDOM_SEED + _k_idx + 500)
+            else:
+                _accs = []
+                for _ in range(_FAITH_N_RANDOM_PERMS):
+                    _perm = _faith_rng.permutation(N_CHANNELS)
+                    _present = set(_perm[_k:]) if _direction == "deletion" else set(_perm[:_k])
+                    _probs = _faith_accuracy_for_mask(_faith_model, _present)
+                    _accs.append(float((_probs > 0.5).mean()))
+                _acc_mean = float(np.mean(_accs))
+                if _FAITH_N_RANDOM_PERMS > 1:
+                    _acc_lo, _acc_hi = float(np.percentile(_accs, 2.5)), float(np.percentile(_accs, 97.5))
+                else:
+                    _acc_lo, _acc_hi = _acc_mean, _acc_mean
+
+            _faith_curve_store[(_direction, _ranking)][_k] = _acc_mean
+            _faith_rows.append({"model": "AADNet", "direction": _direction, "ranking": _ranking,
+                                 "K": _k, "mean_accuracy": _acc_mean, "ci_low": _acc_lo, "ci_high": _acc_hi})
+        print(f"  {_direction:9s} {_ranking:14s} done "
+              f"(K=0 acc={_faith_curve_store[(_direction, _ranking)][0]:.3f}, "
+              f"K={N_CHANNELS} acc={_faith_curve_store[(_direction, _ranking)][N_CHANNELS]:.3f})")
+
+pd.DataFrame(_faith_rows).to_csv(OUT_DIR / "faithfulness_results.csv", index=False)
+print(f"  Saved faithfulness_results.csv ({len(_faith_rows)} rows)")
+
+_faith_auc_summary = {}
+for (_direction, _ranking), _curve in _faith_curve_store.items():
+    _ks_sorted = sorted(_curve.keys())
+    _ys = [_curve[k] for k in _ks_sorted]
+    _auc = float(np.trapz(_ys, x=_ks_sorted) / (_ks_sorted[-1] - _ks_sorted[0]))
+    _faith_auc_summary.setdefault(_direction, {})[_ranking] = _auc
+for _direction in ["deletion", "insertion"]:
+    _gap = _faith_auc_summary[_direction]["combined_score"] - _faith_auc_summary[_direction]["random"]
+    _faith_auc_summary[_direction]["gap"] = _gap
+    _faithful = (_gap < 0) if _direction == "deletion" else (_gap > 0)
+    _verdict = "faithfulness signal present" if _faithful else \
+        "no clear faithfulness gap -- report as a finding, not a bug"
+    print(f"  {_direction} AUC: combined_score={_faith_auc_summary[_direction]['combined_score']:.4f}  "
+          f"random={_faith_auc_summary[_direction]['random']:.4f}  gap={_gap:+.4f}  ({_verdict})")
+with open(OUT_DIR / "faithfulness_auc_summary.json", "w") as f:
+    json.dump(_faith_auc_summary, f, indent=2)
+print("  Saved faithfulness_auc_summary.json")
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=True)
+for ax, _direction in zip(axes, ["deletion", "insertion"]):
+    for _ranking, _color in [("combined_score", "#1976d2"), ("random", "#9e9e9e")]:
+        _curve = _faith_curve_store[(_direction, _ranking)]
+        _ks_sorted = sorted(_curve.keys())
+        ax.plot(_ks_sorted, [_curve[k] for k in _ks_sorted], marker="o", label=_ranking, color=_color)
+    ax.set_xlabel("K channels " + ("removed" if _direction == "deletion" else "restored"))
+    ax.set_title(_direction.capitalize())
+    ax.legend(fontsize=8)
+axes[0].set_ylabel("Accuracy")
+fig.suptitle(f"Deletion / Insertion Faithfulness (AADNet, subj {SANITY_CHECK_SUBJECT} fold {SANITY_CHECK_FOLD})")
+plt.tight_layout()
+plt.savefig(OUT_DIR / "deletion_insertion_curves.png", dpi=150, bbox_inches="tight")
+plt.close()
+print("  Saved deletion_insertion_curves.png")
+print(f"[{time.time()-t_start:6.0f}s] Section J complete.")
+
+del _faith_model_wrapper, _faith_model
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
