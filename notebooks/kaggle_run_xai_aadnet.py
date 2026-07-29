@@ -44,7 +44,28 @@ else:
     print(f"Repository already cloned at {REPO_DIR}")
 
 os.chdir(REPO_DIR)
-subprocess.run(["pip", "install", "-q", "-r", "requirements.txt"], check=True)
+
+# Avoid clobbering Kaggle's own GPU-matched torch build with a generic PyPI
+# wheel -- a common cause of "CUDA error: no kernel image is available for
+# execution on the device". torch.cuda.is_available() still reports True in
+# that case (the driver initializes fine), but no kernel launch actually
+# works because the reinstalled wheel's compiled kernels don't cover the
+# assigned accelerator's compute capability. If a working torch is already
+# importable, keep it and only install the remaining requirements.
+try:
+    import torch as _torch_preinstalled
+    print(f"Pre-installed torch {_torch_preinstalled.__version__} found "
+          f"(CUDA available: {_torch_preinstalled.cuda.is_available()}) -- "
+          "keeping it; installing the rest of requirements.txt without touching torch.")
+    with open("requirements.txt") as _f:
+        _reqs_no_torch = [ln for ln in _f if ln.strip() and not ln.strip().lower().startswith("torch")]
+    with open("/tmp/requirements_no_torch.txt", "w") as _f:
+        _f.writelines(_reqs_no_torch)
+    subprocess.run(["pip", "install", "-q", "-r", "/tmp/requirements_no_torch.txt"], check=True)
+except ImportError:
+    print("No pre-installed torch found -- installing requirements.txt as-is.")
+    subprocess.run(["pip", "install", "-q", "-r", "requirements.txt"], check=True)
+
 subprocess.run(["pip", "install", "-q", "-e", "."], check=True)
 subprocess.run(["pip", "install", "-q", "google-cloud-storage"], check=True)
 
