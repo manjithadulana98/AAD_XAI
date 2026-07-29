@@ -917,9 +917,9 @@ if _sanity_idx.size == 0:
 _sanity_take = min(N_IG_WINDOWS, _sanity_idx.size)
 _sanity_sel = _sanity_idx[:_sanity_take]  # first `take` windows of this fold, deterministic (mirrors IG's own slicing convention)
 
-eeg_fixed_sanity = _sanity_samples["eeg"][_sanity_sel].to(DEVICE)
-env_fixed_sanity = _sanity_samples["env"][_sanity_sel].to(DEVICE)
-y_fixed_sanity = _sanity_samples["y"][_sanity_sel].to(DEVICE)
+eeg_fixed_sanity = _sanity_samples["eeg"][_sanity_sel]  # CPU -- matches p_attended's expected input convention
+env_fixed_sanity = _sanity_samples["env"][_sanity_sel]  # CPU
+y_fixed_sanity = _sanity_samples["y"][_sanity_sel]      # CPU
 print(f"  Fixed window subsample: {len(_sanity_sel)} windows "
       f"(min(N_IG_WINDOWS={N_IG_WINDOWS}, available={_sanity_idx.size}))")
 
@@ -946,16 +946,25 @@ def _sanity_ig_attr_fn(m, x):
     this hand-rolled autograd computation has no internal grad-context management
     (unlike VLAAI's captum-based IG), so it MUST locally re-enable gradients or the
     backward pass fails with "does not require grad and does not have a grad_fn".
+
+    Unlike _sanity_occlusion_attr_fn (which goes through p_attended/batched_forward
+    and therefore expects CPU-resident inputs, per that helper's own internal
+    per-batch .to(DEVICE) convention), this function calls the model directly in
+    one shot and so must move its inputs to DEVICE itself here -- mirroring how
+    subject_perturbations()'s own IG block does `eeg_ig = eeg_f[sel].to(DEVICE)`.
     """
     with torch.enable_grad():
+        x = x.to(DEVICE)
+        env_ig = env_fixed_sanity.to(DEVICE)
+        y_ig = y_fixed_sanity.to(DEVICE)
         baseline_zero = torch.zeros_like(x)
         attrs = torch.zeros_like(x)
         for step in range(IG_STEPS):
             alpha = (step + 1) / IG_STEPS
             x_i = baseline_zero + alpha * (x - baseline_zero)
             x_i.requires_grad_(True)
-            logits = m(x_i, env_fixed_sanity)
-            p = torch.softmax(logits, dim=-1).gather(1, y_fixed_sanity.unsqueeze(1)).squeeze(1)
+            logits = m(x_i, env_ig)
+            p = torch.softmax(logits, dim=-1).gather(1, y_ig.unsqueeze(1)).squeeze(1)
             grads = torch.autograd.grad(p.sum(), x_i, retain_graph=False, create_graph=False)[0]
             attrs = attrs + grads.detach()
         attrs = attrs / IG_STEPS * (x - baseline_zero)
