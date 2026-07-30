@@ -33,6 +33,7 @@
 # %%
 import os
 import subprocess
+import sys
 
 REPO_DIR = "/kaggle/working/AAD_XAI"
 if not os.path.exists(REPO_DIR):
@@ -41,12 +42,17 @@ else:
     print(f"Repository already cloned at {REPO_DIR}")
 os.chdir(REPO_DIR)
 
-# Lightweight install: this analysis only needs numpy/pandas/scipy, not the
-# full torch/captum/shap/lime stack the GPU pipelines require. The package's
-# xai/__init__.py imports those optional submodules defensively, so `pip
-# install -e .` without the heavy extras is sufficient here.
-subprocess.run(["pip", "install", "-q", "-e", "."], check=True)
-print("Setup done.")
+# No package install needed: composite_stability is pure Python (numpy/
+# pandas/scipy only, already present on any Kaggle image), so `pip install
+# -e .` is unnecessary here -- and actively fails in this context anyway,
+# because a `pip install -e .` run from a subprocess mid-session writes a
+# new editable-install hook file that the ALREADY-RUNNING notebook kernel
+# process never re-scans (that only happens once, at interpreter startup,
+# via site.py) -- so `import aad_xai` raises ModuleNotFoundError even
+# though the install itself reports success. Adding src/ directly to
+# sys.path sidesteps that whole class of issue.
+sys.path.insert(0, os.path.join(REPO_DIR, "src"))
+print(f"Setup done. src/ added to sys.path for interpreter: {sys.executable}")
 
 # %% [markdown]
 # ## 2. Locate the attached kernel-output data
