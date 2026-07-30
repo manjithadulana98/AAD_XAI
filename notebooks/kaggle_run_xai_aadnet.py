@@ -1202,6 +1202,298 @@ plt.close()
 print("  Saved deletion_insertion_curves.png")
 print(f"[{time.time()-t_start:6.0f}s] Section J complete.")
 
+# %% [markdown]
+# ## 20. Phase 5 — Statistical Layer Backfill to VLAAI Parity
+#
+# Ports VLAAI's window-level per-channel bootstrap CI + sign-flip p-value,
+# `combined_score`/`contribution_type`/`robust_significant` classification,
+# the four-tier (tier1-4) subject-level classification, ROI-level subject
+# Wilcoxon+FDR, and hierarchical FDR (ROI gate -> channel re-test) into
+# AADNet — reusing the exact same statistical helpers already defined in
+# this notebook (`bootstrap_ci`, `sign_flip_p_value`, `fdr_correction`) and
+# the per-window arrays already computed in Sections B/C/D
+# (`per_subject_results`), following the identical formulas used in
+# `scripts/run_focused_xai.py`'s `run_channel_importance()` /
+# `run_subject_level_validation()` / `_run_roi_subject_stats()` /
+# `run_hierarchical_channel_fdr()`.
+#
+# This step's `channel_importance.csv` SUPERSEDES the simpler one written in
+# Section 16 with one matching VLAAI's full schema, so cross-model scripts
+# (e.g. `scripts/analyze_region_channel_stability.py`) can treat both
+# models' outputs interchangeably. Also writes `candidate_channels.csv`,
+# `high_confidence_channels.csv`, `hierarchical_channel_stats.csv`, and
+# `subject_level_roi_stats.csv`, matching VLAAI's filenames.
+
+# %%
+print(f"[{time.time()-t_start:6.0f}s] PHASE 5 — statistical layer backfill (VLAAI parity)")
+
+STABILITY_THRESHOLD = 0.5  # matches VLAAI's --stability-threshold default
+
+# ---- 20.1 Window-level per-channel bootstrap CI + sign-flip p-value ----
+# Pool every subject's per-window occ_dp/perm_dp arrays together -- the
+# equivalent of VLAAI's balanced-by-subject window pool, since AADNet's
+# per-subject arrays already cover that subject's own held-out windows.
+_occ_pw = np.concatenate([per_subject_results[s]["occ_dp"] for s in subject_ids], axis=0)
+_perm_pw = np.concatenate([per_subject_results[s]["perm_dp"] for s in subject_ids], axis=0)
+print(f"  [20.1] Pooled window-level arrays: {_occ_pw.shape[0]} windows total")
+
+_occ_window_results, _perm_window_results = [], []
+for ch in range(N_CHANNELS):
+    om, olo, ohi = bootstrap_ci(_occ_pw[:, ch], N_BOOT, seed=RANDOM_SEED)
+    op = sign_flip_p_value(_occ_pw[:, ch], n_perm=N_PERM, seed=RANDOM_SEED + ch)
+    _occ_window_results.append({"channel": ch, "mean_dp": om, "ci_lo": olo, "ci_hi": ohi, "p_value": op})
+    pm, plo, phi = bootstrap_ci(_perm_pw[:, ch], N_BOOT, seed=RANDOM_SEED)
+    pp = sign_flip_p_value(_perm_pw[:, ch], n_perm=N_PERM, seed=RANDOM_SEED + ch + 1000)
+    _perm_window_results.append({"channel": ch, "mean_dp": pm, "ci_lo": plo, "ci_hi": phi, "p_value": pp})
+
+_occ_win_p = np.array([r["p_value"] for r in _occ_window_results])
+_perm_win_p = np.array([r["p_value"] for r in _perm_window_results])
+_occ_win_fdr_p, _occ_win_fdr_sig = fdr_correction(_occ_win_p, FDR_ALPHA)
+_perm_win_fdr_p, _perm_win_fdr_sig = fdr_correction(_perm_win_p, FDR_ALPHA)
+print(f"  [20.1] Window-level FDR-sig: occlusion {int(_occ_win_fdr_sig.sum())}/{N_CHANNELS}, "
+      f"permutation {int(_perm_win_fdr_sig.sum())}/{N_CHANNELS}")
+
+# ---- 20.2 IG pooled per-channel importance + rank (corroboration only, per VLAAI's own design) ----
+_ig_all = np.concatenate([per_subject_results[s]["ig_attr"] for s in subject_ids], axis=0)
+_ig_importance = _ig_all.mean(axis=0) if _ig_all.shape[0] > 0 else np.zeros(N_CHANNELS)
+_ig_ranks = np.argsort(np.argsort(-_ig_importance)) + 1
+
+# ---- 20.3 combined_score / contribution_type / robust_significant (window-level, per VLAAI's run_channel_importance) ----
+_combined = []
+for ch in range(N_CHANNELS):
+    occ_r, perm_r = _occ_window_results[ch], _perm_window_results[ch]
+    occ_mean, occ_lo, occ_hi = occ_r["mean_dp"], occ_r["ci_lo"], occ_r["ci_hi"]
+    perm_mean, perm_lo, perm_hi = perm_r["mean_dp"], perm_r["ci_lo"], perm_r["ci_hi"]
+    occ_ci_sig = (occ_lo > 0) or (occ_hi < 0)
+    perm_ci_sig = (perm_lo > 0) or (perm_hi < 0)
+
+    if occ_mean > 0 and perm_mean > 0:
+        contribution_type = "facilitatory"
+    elif occ_mean < 0 and perm_mean < 0:
+        contribution_type = "suppressive"
+    else:
+        contribution_type = "mixed"
+
+    ch_col = occ_subj_ch[:, ch]
+    majority_sign = np.sign(np.median(ch_col))
+    if majority_sign == 0:
+        majority_sign = np.sign(occ_mean)
+    n_agree = int(np.sum(np.sign(ch_col) == majority_sign))
+    stable_frac = n_agree / len(subject_ids)
+    stable_str = f"{n_agree}/{len(subject_ids)}"
+
+    same_sign = contribution_type in ("facilitatory", "suppressive")
+    at_least_one_fdr = bool(_occ_win_fdr_sig[ch]) or bool(_perm_win_fdr_sig[ch])
+    is_stable = stable_frac >= STABILITY_THRESHOLD
+    robust_significant = same_sign and at_least_one_fdr and is_stable
+
+    _combined.append({
+        "channel": ch, "electrode_name": CH_NAME.get(ch, f"Ch{ch}"), "roi": CH_ROI.get(ch, "Unknown"),
+        "roi_mapping_source": "montage_file",
+        "occ_score": occ_mean, "occ_ci_lo": occ_lo, "occ_ci_hi": occ_hi,
+        "occ_p_value": float(_occ_win_p[ch]), "occ_fdr_p_value": float(_occ_win_fdr_p[ch]),
+        "occ_fdr_significant": bool(_occ_win_fdr_sig[ch]), "occ_ci_significant": occ_ci_sig,
+        "perm_score": perm_mean, "perm_ci_lo": perm_lo, "perm_ci_hi": perm_hi,
+        "perm_p_value": float(_perm_win_p[ch]), "perm_fdr_p_value": float(_perm_win_fdr_p[ch]),
+        "perm_fdr_significant": bool(_perm_win_fdr_sig[ch]), "perm_ci_significant": perm_ci_sig,
+        "ig_rank": int(_ig_ranks[ch]), "ig_importance": float(_ig_importance[ch]),
+        "contribution_type": contribution_type,
+        "subject_stability": stable_str, "subject_stability_frac": stable_frac,
+        "robust_significant": robust_significant,
+    })
+
+_occ_abs = np.array([abs(c["occ_score"]) for c in _combined])
+_perm_abs = np.array([abs(c["perm_score"]) for c in _combined])
+_occ_z = (_occ_abs - _occ_abs.mean()) / _occ_abs.std() if _occ_abs.std() > 1e-10 else np.zeros(N_CHANNELS)
+_perm_z = (_perm_abs - _perm_abs.mean()) / _perm_abs.std() if _perm_abs.std() > 1e-10 else np.zeros(N_CHANNELS)
+_combined_score = (_occ_z + _perm_z) / 2.0
+_rank_order = np.argsort(-_combined_score)
+for _rank, _ch_idx in enumerate(_rank_order):
+    _combined[_ch_idx]["rank"] = _rank + 1
+    _combined[_ch_idx]["combined_score"] = float(_combined_score[_ch_idx])
+_combined.sort(key=lambda x: x["rank"])
+
+_n_robust = sum(1 for c in _combined if c["robust_significant"])
+print(f"  [20.3] combined_score computed. Window-level robust_significant: {_n_robust}/{N_CHANNELS}")
+
+# Overwrite channel_importance.csv with VLAAI-matching schema (supersedes Section 16's simpler version)
+_ci_fields = [
+    "rank", "channel", "electrode_name", "roi", "roi_mapping_source",
+    "occ_score", "occ_ci_lo", "occ_ci_hi", "occ_p_value", "occ_fdr_p_value",
+    "occ_fdr_significant", "occ_ci_significant",
+    "perm_score", "perm_ci_lo", "perm_ci_hi", "perm_p_value", "perm_fdr_p_value",
+    "perm_fdr_significant", "perm_ci_significant",
+    "ig_rank", "ig_importance",
+    "contribution_type", "subject_stability", "robust_significant", "combined_score",
+]
+pd.DataFrame(_combined)[_ci_fields].to_csv(OUT_DIR / "channel_importance.csv", index=False)
+print("  [20.3] Saved channel_importance.csv (VLAAI-matching schema, supersedes Section 16 version)")
+
+# %% [markdown]
+# ### 20.4 Subject-level Wilcoxon + Cohen's d + four-tier classification
+
+# %%
+_ch_by_idx = {c["channel"]: c for c in _combined}
+_ch_stats = []
+for ch in range(N_CHANNELS):
+    occ_vals, perm_vals = occ_subj_ch[:, ch], perm_subj_ch[:, ch]
+    occ_std, perm_std = occ_vals.std(ddof=1), perm_vals.std(ddof=1)
+    occ_d = float(occ_vals.mean() / occ_std) if occ_std > 1e-12 else 0.0
+    perm_d = float(perm_vals.mean() / perm_std) if perm_std > 1e-12 else 0.0
+    _ch_stats.append({
+        "channel_index": ch, "channel_name": CH_NAME.get(ch, f"Ch{ch}"), "roi": CH_ROI.get(ch, "Unknown"),
+        "occ_subj_mean": float(occ_vals.mean()), "occ_cohens_d": occ_d,
+        "occ_wilcox_p": float(occ_p[ch]), "occ_fdr_p": float(occ_adj[ch]), "occ_fdr_sig": bool(occ_sig[ch]),
+        "perm_subj_mean": float(perm_vals.mean()), "perm_cohens_d": perm_d,
+        "perm_wilcox_p": float(perm_p[ch]), "perm_fdr_p": float(perm_adj[ch]), "perm_fdr_sig": bool(perm_sig[ch]),
+        "both_fdr_sig": bool(occ_sig[ch]) and bool(perm_sig[ch]),
+    })
+
+_combined_abs_subj = np.array([abs(r["occ_subj_mean"]) + abs(r["perm_subj_mean"]) for r in _ch_stats])
+_top20_threshold = np.percentile(_combined_abs_subj, 80)
+
+_tier_rows = []
+for ch in range(N_CHANNELS):
+    st, ci = _ch_stats[ch], _ch_by_idx.get(ch, {})
+    occ_sign, perm_sign = np.sign(st["occ_subj_mean"]), np.sign(st["perm_subj_mean"])
+    same_sign = (occ_sign == perm_sign) and (occ_sign != 0)
+    stab_frac = ci.get("subject_stability_frac", 0.0)
+    in_top20 = _combined_abs_subj[ch] >= _top20_threshold
+
+    if st["both_fdr_sig"] and same_sign and stab_frac >= (12 / 18) and in_top20:
+        tier = "tier1_high_confidence"
+    elif (st["occ_fdr_sig"] or st["perm_fdr_sig"]) and same_sign and stab_frac >= (10 / 18):
+        tier = "tier2_candidate"
+    elif ci.get("robust_significant", False):
+        tier = "tier3_exploratory"
+    else:
+        tier = "tier4_not_robust"
+    tier_label = tier + "_suppressive" if (tier in ("tier1_high_confidence", "tier2_candidate") and occ_sign < 0) else tier
+
+    _tier_rows.append({
+        "channel_index": ch, "channel_name": CH_NAME.get(ch, f"Ch{ch}"), "roi": CH_ROI.get(ch, "Unknown"),
+        "tier": tier_label,
+        "occ_subj_mean": st["occ_subj_mean"], "perm_subj_mean": st["perm_subj_mean"],
+        "occ_cohens_d": st["occ_cohens_d"], "perm_cohens_d": st["perm_cohens_d"],
+        "occ_fdr_sig": st["occ_fdr_sig"], "perm_fdr_sig": st["perm_fdr_sig"], "both_fdr_sig": st["both_fdr_sig"],
+        "subject_stability": ci.get("subject_stability", "N/A"),
+        "in_top20pct_effect": in_top20, "window_level_robust": ci.get("robust_significant", False),
+    })
+
+_tier_fields = [
+    "channel_index", "channel_name", "roi", "tier",
+    "occ_subj_mean", "perm_subj_mean", "occ_cohens_d", "perm_cohens_d",
+    "occ_fdr_sig", "perm_fdr_sig", "both_fdr_sig",
+    "subject_stability", "in_top20pct_effect", "window_level_robust",
+]
+_hc = sorted([r for r in _tier_rows if r["tier"].startswith("tier1")],
+             key=lambda r: -(abs(r["occ_subj_mean"]) + abs(r["perm_subj_mean"])))
+_cand = sorted([r for r in _tier_rows if r["tier"].startswith("tier2")],
+               key=lambda r: -(abs(r["occ_subj_mean"]) + abs(r["perm_subj_mean"])))
+
+(pd.DataFrame(_hc, columns=_tier_fields) if _hc else pd.DataFrame(columns=_tier_fields)).to_csv(
+    OUT_DIR / "high_confidence_channels.csv", index=False)
+(pd.DataFrame(_cand, columns=_tier_fields) if _cand else pd.DataFrame(columns=_tier_fields)).to_csv(
+    OUT_DIR / "candidate_channels.csv", index=False)
+
+_n_t3 = sum(1 for r in _tier_rows if r["tier"].startswith("tier3"))
+print(f"  [20.4] Tiers -- T1 high-confidence: {len(_hc)} | T2 candidate: {len(_cand)} | T3 exploratory: {_n_t3}")
+if _hc:
+    print("         High-confidence channels: " + ", ".join(r["channel_name"] for r in _hc))
+
+# %% [markdown]
+# ### 20.5 ROI-level subject-Wilcoxon + FDR (prerequisite for the hierarchical FDR gate)
+
+# %%
+def _roi_wilcox_p(vals):
+    if len(subject_ids) < 3:
+        return 1.0
+    nonzero = vals[vals != 0]
+    if len(nonzero) < 2:
+        return 1.0
+    try:
+        _, p = wilcoxon(vals, zero_method="wilcox", alternative="two-sided")
+        return float(p)
+    except Exception:
+        return 1.0
+
+
+_roi_rows, _roi_occ_ps, _roi_perm_ps = [], [], []
+for roi_name, chs in ROIS.items():
+    roi_occ_subj = occ_subj_ch[:, chs].mean(axis=1)
+    roi_perm_subj = perm_subj_ch[:, chs].mean(axis=1)
+    op, pp = _roi_wilcox_p(roi_occ_subj), _roi_wilcox_p(roi_perm_subj)
+    _roi_occ_ps.append(op); _roi_perm_ps.append(pp)
+    om, olo, ohi = bootstrap_ci(roi_occ_subj, N_BOOT, seed=RANDOM_SEED)
+    pm, plo, phi = bootstrap_ci(roi_perm_subj, N_BOOT, seed=RANDOM_SEED + 100)
+    _roi_rows.append({
+        "roi": roi_name, "n_channels": len(chs),
+        "occ_subj_mean": om, "occ_subj_ci_lo": olo, "occ_subj_ci_hi": ohi, "occ_wilcox_p": op,
+        "perm_subj_mean": pm, "perm_subj_ci_lo": plo, "perm_subj_ci_hi": phi, "perm_wilcox_p": pp,
+    })
+
+_roi_occ_fdr_p, _roi_occ_fdr_sig = fdr_correction(np.array(_roi_occ_ps), FDR_ALPHA)
+_roi_perm_fdr_p, _roi_perm_fdr_sig = fdr_correction(np.array(_roi_perm_ps), FDR_ALPHA)
+for i, row in enumerate(_roi_rows):
+    row["occ_fdr_p"], row["occ_fdr_sig"] = float(_roi_occ_fdr_p[i]), bool(_roi_occ_fdr_sig[i])
+    row["perm_fdr_p"], row["perm_fdr_sig"] = float(_roi_perm_fdr_p[i]), bool(_roi_perm_fdr_sig[i])
+
+_roi_fields = ["roi", "n_channels", "occ_subj_mean", "occ_subj_ci_lo", "occ_subj_ci_hi",
+               "occ_wilcox_p", "occ_fdr_p", "occ_fdr_sig",
+               "perm_subj_mean", "perm_subj_ci_lo", "perm_subj_ci_hi",
+               "perm_wilcox_p", "perm_fdr_p", "perm_fdr_sig"]
+pd.DataFrame(_roi_rows)[_roi_fields].to_csv(OUT_DIR / "subject_level_roi_stats.csv", index=False)
+print(f"  [20.5] Saved subject_level_roi_stats.csv "
+      f"({int(_roi_occ_fdr_sig.sum())}/{len(ROIS)} ROI occ FDR-sig, "
+      f"{int(_roi_perm_fdr_sig.sum())}/{len(ROIS)} perm FDR-sig)")
+
+# %% [markdown]
+# ### 20.6 Hierarchical FDR — ROI gate, then channel-level re-test within surviving ROIs only
+
+# %%
+_stats_by_ch = {r["channel_index"]: r for r in _ch_stats}
+_sig_rois = [r["roi"] for r in _roi_rows if r["occ_fdr_sig"] or r["perm_fdr_sig"]]
+
+if not _sig_rois:
+    print("  [20.6] No ROIs passed subject-level FDR gate -- hierarchical test skipped.")
+    _hier_rows = []
+else:
+    _gated_chs = sorted(set(ch for roi in _sig_rois for ch in ROIS[roi]))
+    print(f"  [20.6] Gated ROIs: {', '.join(_sig_rois)}  ({len(_gated_chs)} channels)")
+    _gated_rows = [_stats_by_ch[ch] for ch in _gated_chs if ch in _stats_by_ch]
+    _hier_occ_ps = np.array([r["occ_wilcox_p"] for r in _gated_rows])
+    _hier_perm_ps = np.array([r["perm_wilcox_p"] for r in _gated_rows])
+    _hier_occ_fdr_p, _hier_occ_fdr_sig = fdr_correction(_hier_occ_ps, FDR_ALPHA)
+    _hier_perm_fdr_p, _hier_perm_fdr_sig = fdr_correction(_hier_perm_ps, FDR_ALPHA)
+
+    _hier_rows = []
+    for i, r in enumerate(_gated_rows):
+        hier_sig = bool(_hier_occ_fdr_sig[i]) or bool(_hier_perm_fdr_sig[i])
+        both_sig = bool(_hier_occ_fdr_sig[i]) and bool(_hier_perm_fdr_sig[i])
+        tier = "hier_tier1_both" if both_sig else "hier_tier2_one" if hier_sig else "hier_not_sig"
+        _hier_rows.append({
+            "channel_index": r["channel_index"], "channel_name": r["channel_name"], "roi": r["roi"],
+            "occ_wilcox_p": r["occ_wilcox_p"], "occ_hierarchical_fdr_p": float(_hier_occ_fdr_p[i]),
+            "occ_hierarchical_sig": bool(_hier_occ_fdr_sig[i]),
+            "occ_subj_mean": r["occ_subj_mean"], "occ_cohens_d": r["occ_cohens_d"],
+            "perm_wilcox_p": r["perm_wilcox_p"], "perm_hierarchical_fdr_p": float(_hier_perm_fdr_p[i]),
+            "perm_hierarchical_sig": bool(_hier_perm_fdr_sig[i]),
+            "perm_subj_mean": r["perm_subj_mean"], "perm_cohens_d": r["perm_cohens_d"],
+            "hierarchical_tier": tier,
+        })
+    _n_hier_sig = sum(1 for r in _hier_rows if r["hierarchical_tier"] != "hier_not_sig")
+    print(f"  [20.6] Within gated ROIs: {_n_hier_sig}/{len(_gated_chs)} channels survive hierarchical FDR")
+
+_hier_fields = ["channel_index", "channel_name", "roi",
+                "occ_wilcox_p", "occ_hierarchical_fdr_p", "occ_hierarchical_sig",
+                "occ_subj_mean", "occ_cohens_d",
+                "perm_wilcox_p", "perm_hierarchical_fdr_p", "perm_hierarchical_sig",
+                "perm_subj_mean", "perm_cohens_d", "hierarchical_tier"]
+(pd.DataFrame(_hier_rows, columns=_hier_fields) if _hier_rows else pd.DataFrame(columns=_hier_fields)).to_csv(
+    OUT_DIR / "hierarchical_channel_stats.csv", index=False)
+print("  [20.6] Saved hierarchical_channel_stats.csv")
+print(f"[{time.time()-t_start:6.0f}s] Phase 5 complete.")
+
 del _faith_model_wrapper, _faith_model
 if torch.cuda.is_available():
     torch.cuda.empty_cache()
