@@ -74,6 +74,14 @@ def parse_args():
                     help="Skip Section K (Haufe transform vs VLAAI combined_score).")
     p.add_argument("--haufe-max-samples-per-subject", type=int, default=100,
                     help="Cap on windows per subject when computing per-subject Haufe patterns.")
+    p.add_argument("--aadnet-montage-file", type=str,
+                    default=str(ROOT / "config" / "aadnet_dtu_channel_montage.csv"),
+                    help="AADNet's own channel montage (Phase 3 extension, Section K2).")
+    p.add_argument("--aadnet-channel-importance", type=str, default=None,
+                    help="Path to AADNet's channel_importance.csv (Phase 5 schema, needs combined_score). "
+                         "If not provided, Section K2 is skipped.")
+    p.add_argument("--skip-aadnet-haufe", action="store_true",
+                    help="Skip Section K2 (Haufe transform vs AADNet combined_score).")
     return p.parse_args()
 
 
@@ -734,6 +742,185 @@ def section_k_haufe(trf, ds, montage_path, vlaai_results_dir, n_boot, seed, dirs
 
 
 # ══════════════════════════════════════════════════════════════════════
+# SECTION K2 — Haufe Transform vs AADNet combined_score (Phase 3 extension)
+# ══════════════════════════════════════════════════════════════════════
+def section_k2_haufe_vs_aadnet(trf, ds, vlaai_montage_path, aadnet_montage_path,
+                                aadnet_channel_importance_csv, n_boot, seed, dirs,
+                                max_samples_per_subject=100):
+    """Extends Section K to AADNet, now that config/aadnet_dtu_channel_montage.csv
+    provides AADNet's correct channel mapping (see that file and
+    scripts/relabel_aadnet_channels.py for the mislabeling this fixes).
+
+    The TRF is trained on VLAAI's own preprocessed DTU windows -- a
+    DIFFERENT channel-order space (config/dtu_channel_montage.csv) than
+    AADNet's channel order (config/aadnet_dtu_channel_montage.csv,
+    "Fuglsang-64"). Comparing them channel-for-channel requires matching by
+    ELECTRODE NAME, not index position: 58 of 64 electrode names are shared
+    between the two montages; 6 are VLAAI-only (TP9, TP10, PO9, PO10, M1,
+    M2) and 6 are AADNet-only (Iz, AFz, FCz, Fpz, P9, P10). Those 6+6 are
+    explicitly excluded from the channel-level comparison below (never
+    silently dropped -- listed in the summary). The ROI-level comparison
+    instead aggregates each side using its OWN correct montage, then
+    compares by ROI NAME across whichever ROIs both sides have (AADNet has
+    no Mastoid ROI at all, since Fuglsang-64 doesn't reference mastoids).
+
+    Saves: haufe_vs_aadnet_comparison.csv, haufe_vs_aadnet_summary.json,
+    haufe_vs_aadnet_scatter.png
+    """
+    import pandas as pd
+    from scipy.stats import wilcoxon
+    from aad_xai.xai import load_montage_rois
+
+    print("\n" + "=" * 70)
+    print("SECTION K2 (Phase 3 extension): HAUFE TRANSFORM vs AADNet combined_score")
+    print("=" * 70)
+    out = dirs["haufe"]
+
+    aadnet_ci_path = Path(aadnet_channel_importance_csv)
+    if not aadnet_ci_path.exists():
+        print(f"  SKIPPED: AADNet channel_importance.csv not found at {aadnet_ci_path}")
+        save_json({"skipped": True, "reason": f"missing {aadnet_ci_path}"}, out / "haufe_vs_aadnet_summary.json")
+        return None
+
+    vlaai_roi_of, vlaai_name_of, vlaai_name_to_idx, vlaai_rois = load_montage_rois(str(vlaai_montage_path))
+    _aadnet_roi_of, _aadnet_name_of, aadnet_name_to_idx, aadnet_rois = load_montage_rois(str(aadnet_montage_path))
+
+    aadnet_df = pd.read_csv(aadnet_ci_path)
+    # channel_importance.csv schema varies (pre/post Phase-5 backfill): the
+    # channel-name column is "electrode" (old) or "electrode_name" (new),
+    # keyed by "channel_idx" (old) or "channel" (new). Handle both.
+    name_col = "electrode_name" if "electrode_name" in aadnet_df.columns else "electrode"
+    idx_col = "channel" if "channel" in aadnet_df.columns else "channel_idx"
+    if "combined_score" not in aadnet_df.columns:
+        print(f"  SKIPPED: {aadnet_ci_path} has no combined_score column "
+              "(needs the Phase 5 statistical-layer backfill) -- cannot compare.")
+        save_json({"skipped": True, "reason": "no combined_score column"}, out / "haufe_vs_aadnet_summary.json")
+        return None
+    aadnet_combined_by_name = dict(zip(aadnet_df[name_col], aadnet_df["combined_score"]))
+
+    # ── Name-based channel alignment ─────────────────────────────────────
+    shared_names = sorted(set(vlaai_name_of.values()) & set(aadnet_combined_by_name.keys()))
+    vlaai_only = sorted(set(vlaai_name_of.values()) - set(aadnet_combined_by_name.keys()))
+    aadnet_only = sorted(set(aadnet_combined_by_name.keys()) - set(vlaai_name_of.values()))
+    print(f"  Matched {len(shared_names)} shared electrode names "
+          f"(excluded {len(vlaai_only)} VLAAI-only: {vlaai_only}; "
+          f"{len(aadnet_only)} AADNet-only: {aadnet_only})")
+
+    # ── Per-subject Haufe pattern in VLAAI's channel-index space ─────────
+    unique_subjects = sorted(set(ds.subject_ids.tolist()))
+    per_subject_pattern = []
+    for subj in unique_subjects:
+        idxs = np.where(ds.subject_ids == subj)[0]
+        if len(idxs) > max_samples_per_subject:
+            idxs = idxs[:max_samples_per_subject]
+        pattern, _ = haufe_pattern_for_windows(trf, ds, idxs.tolist())
+        per_subject_pattern.append(pattern)
+    per_subject_pattern = np.stack(per_subject_pattern)  # (n_subj, 64), VLAAI index space
+    mean_subject_pattern = per_subject_pattern.mean(axis=0)
+
+    haufe_aligned = np.array([mean_subject_pattern[vlaai_name_to_idx[n]] for n in shared_names])
+    aadnet_aligned = np.array([aadnet_combined_by_name[n] for n in shared_names])
+    per_subject_aligned = np.array([
+        [per_subject_pattern[s][vlaai_name_to_idx[n]] for n in shared_names]
+        for s in range(len(unique_subjects))
+    ])  # (n_subj, n_shared)
+
+    # ── Channel-level comparison (58 shared channels) ────────────────────
+    rho_ch_group, p_ch_group = _safe_spearman(haufe_aligned, aadnet_aligned)
+    per_subject_rho_ch = np.array([_safe_spearman(per_subject_aligned[s], aadnet_aligned)[0]
+                                    for s in range(len(unique_subjects))])
+    mean_rho_ch, ci_lo_ch, ci_hi_ch = bootstrap_ci(per_subject_rho_ch, n_boot, seed=seed)
+    wilcox_p_ch = float(wilcoxon(per_subject_rho_ch)[1]) if (
+        len(per_subject_rho_ch) >= 3 and np.any(per_subject_rho_ch != 0)) else 1.0
+
+    # ── ROI-level comparison (each side's own correct grouping, by ROI name) ─
+    shared_rois = sorted(set(vlaai_rois.keys()) & set(aadnet_rois.keys()))
+    vlaai_roi_vals = np.array([mean_subject_pattern[vlaai_rois[r]].mean() for r in shared_rois])
+    aadnet_combined_by_idx = dict(zip(aadnet_df[idx_col], aadnet_df["combined_score"]))
+    aadnet_roi_vals = np.array([
+        np.mean([aadnet_combined_by_idx[ch] for ch in aadnet_rois[r] if ch in aadnet_combined_by_idx])
+        for r in shared_rois
+    ])
+    rho_roi_group, p_roi_group = _safe_spearman(vlaai_roi_vals, aadnet_roi_vals)
+    print(f"  ROI-level shared ROIs: {shared_rois}")
+
+    per_subject_roi_vlaai = np.array([
+        [per_subject_pattern[s][vlaai_rois[r]].mean() for r in shared_rois]
+        for s in range(len(unique_subjects))
+    ])
+    per_subject_rho_roi = np.array([_safe_spearman(per_subject_roi_vlaai[s], aadnet_roi_vals)[0]
+                                     for s in range(len(unique_subjects))])
+    mean_rho_roi, ci_lo_roi, ci_hi_roi = bootstrap_ci(per_subject_rho_roi, n_boot, seed=seed + 1)
+    wilcox_p_roi = float(wilcoxon(per_subject_rho_roi)[1]) if (
+        len(per_subject_rho_roi) >= 3 and np.any(per_subject_rho_roi != 0)) else 1.0
+
+    print(f"  Channel-level (58 shared): group rho={rho_ch_group:+.3f} (p={p_ch_group:.4f}); "
+          f"per-subject mean rho={mean_rho_ch:+.3f} [{ci_lo_ch:+.3f},{ci_hi_ch:+.3f}] "
+          f"wilcoxon p={wilcox_p_ch:.4f}")
+    print(f"  ROI-level:              group rho={rho_roi_group:+.3f} (p={p_roi_group:.4f}); "
+          f"per-subject mean rho={mean_rho_roi:+.3f} [{ci_lo_roi:+.3f},{ci_hi_roi:+.3f}] "
+          f"wilcoxon p={wilcox_p_roi:.4f}")
+
+    # ── haufe_vs_aadnet_comparison.csv (58 aligned channel rows) ─────────
+    rows = [{
+        "electrode_name": n,
+        "vlaai_channel_idx": vlaai_name_to_idx[n],
+        "aadnet_channel_idx": aadnet_name_to_idx[n],
+        "roi": vlaai_roi_of.get(vlaai_name_to_idx[n], "Unknown"),
+        "haufe_magnitude": float(haufe_aligned[i]),
+        "aadnet_combined_score": float(aadnet_aligned[i]),
+    } for i, n in enumerate(shared_names)]
+    fieldnames = ["electrode_name", "vlaai_channel_idx", "aadnet_channel_idx", "roi",
+                  "haufe_magnitude", "aadnet_combined_score"]
+    with open(out / "haufe_vs_aadnet_comparison.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(rows)
+    print(f"  Saved haufe_vs_aadnet_comparison.csv ({len(rows)} shared-name channels)")
+
+    summary = {
+        "n_subjects": len(unique_subjects),
+        "n_shared_channels": len(shared_names),
+        "vlaai_only_channels_excluded": vlaai_only,
+        "aadnet_only_channels_excluded": aadnet_only,
+        "shared_rois": shared_rois,
+        "channel_level": {
+            "group_rho": rho_ch_group, "group_p": p_ch_group,
+            "per_subject_mean_rho": mean_rho_ch, "per_subject_ci_lo": ci_lo_ch,
+            "per_subject_ci_hi": ci_hi_ch, "wilcoxon_p": wilcox_p_ch,
+        },
+        "roi_level": {
+            "group_rho": rho_roi_group, "group_p": p_roi_group,
+            "per_subject_mean_rho": mean_rho_roi, "per_subject_ci_lo": ci_lo_roi,
+            "per_subject_ci_hi": ci_hi_roi, "wilcoxon_p": wilcox_p_roi,
+        },
+    }
+    save_json(summary, out / "haufe_vs_aadnet_summary.json")
+    print("  Saved haufe_vs_aadnet_summary.json")
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    roi_list = [r["roi"] for r in rows]
+    present_rois = sorted(set(roi_list))
+    cmap = plt.get_cmap("tab10")
+    roi_color = {r: cmap(i % 10) for i, r in enumerate(present_rois)}
+    for r in present_rois:
+        sel = [i for i, rr in enumerate(roi_list) if rr == r]
+        ax.scatter(aadnet_aligned[sel], haufe_aligned[sel], label=r, color=roi_color[r], alpha=0.8, s=35)
+    ax.set_xlabel("AADNet combined_score")
+    ax.set_ylabel("Haufe activation-pattern magnitude (TRF)")
+    ax.set_title(f"Haufe pattern vs AADNet combined_score (58 shared channels)\n"
+                 f"channel-level rho={rho_ch_group:+.3f} (group), "
+                 f"{mean_rho_ch:+.3f} [{ci_lo_ch:+.3f},{ci_hi_ch:+.3f}] (per-subject mean)")
+    ax.legend(fontsize=7, loc="best")
+    plt.tight_layout()
+    plt.savefig(out / "haufe_vs_aadnet_scatter.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  Saved haufe_vs_aadnet_scatter.png")
+
+    return summary
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Comparison report generation
 # ══════════════════════════════════════════════════════════════════════
 def generate_comparison(vlaai_dir: Path, trf_dir: Path, out_dir: Path):
@@ -1160,6 +1347,22 @@ def main():
             traceback.print_exc()
     else:
         print("\nSection K (Haufe transform) skipped via --skip-haufe.")
+
+    # ── Section K2: Haufe transform vs AADNet combined_score (Phase 3 ext.) ──
+    if not args.skip_aadnet_haufe and args.aadnet_channel_importance:
+        try:
+            section_k2_haufe_vs_aadnet(
+                trf, ds, args.montage_file, args.aadnet_montage_file,
+                args.aadnet_channel_importance, args.n_boot, args.seed, dirs,
+                max_samples_per_subject=args.haufe_max_samples_per_subject)
+        except Exception as exc:
+            print(f"  WARNING: Section K2 (Haufe transform vs AADNet) failed: {exc}")
+            import traceback
+            traceback.print_exc()
+    elif not args.aadnet_channel_importance:
+        print("\nSection K2 (Haufe transform vs AADNet) skipped: no --aadnet-channel-importance path given.")
+    else:
+        print("\nSection K2 (Haufe transform vs AADNet) skipped via --skip-aadnet-haufe.")
 
     # ── Comparison report ────────────────────────────────────────────
     trf_xai_dir = dirs["trf_xai"]
