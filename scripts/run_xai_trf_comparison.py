@@ -67,6 +67,13 @@ def parse_args():
                     help="Fraction of windows to use for TRF training (rest for XAI).")
     p.add_argument("--sections", nargs="*", default=ALL_SECTIONS,
                     help="Sections to run (C,D,H,I,J). Default: all.")
+    p.add_argument("--montage-file", type=str,
+                    default=str(ROOT / "config" / "dtu_channel_montage.csv"),
+                    help="Shared 9-ROI montage CSV, used by Section K (Haufe transform).")
+    p.add_argument("--skip-haufe", action="store_true",
+                    help="Skip Section K (Haufe transform vs VLAAI combined_score).")
+    p.add_argument("--haufe-max-samples-per-subject", type=int, default=100,
+                    help="Cap on windows per subject when computing per-subject Haufe patterns.")
     return p.parse_args()
 
 
@@ -87,6 +94,7 @@ def make_output_dirs(base: Path) -> dict[str, Path]:
         "subject_wise": base / "trf_xai" / "H_subject_wise",
         "frequency_band": base / "trf_xai" / "I_frequency_band",
         "correct_incorrect": base / "trf_xai" / "J_correct_incorrect",
+        "haufe": base / "trf_xai" / "K_haufe_transform",
         "comparison": base / "comparison",
     }
     for d in dirs.values():
@@ -514,6 +522,218 @@ def section_j_trf(decision, trf, eeg, att, unatt, n_boot, seed, dirs):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# SECTION K — Haufe Transform vs VLAAI combined_score (Phase 3)
+# ══════════════════════════════════════════════════════════════════════
+def haufe_pattern_for_windows(trf, ds, window_indices):
+    """Haufe activation pattern for the trained TRFDecoder over the given windows.
+
+    Haufe et al. (2014): for a backward/decoding model y_hat = X @ w, the
+    discriminative weights w are not directly interpretable as "importance"
+    (they can be arbitrarily distorted by correlated/noisy features); the
+    activation pattern a = Cov(X) @ w / Var(y_hat) recovers a physiologically
+    interpretable map, using the identity Cov(X) @ w = Cov(X, y_hat) so no
+    (n_features x n_features) covariance matrix needs to be formed.
+
+    X and w are used in the exact z-scored feature space the Ridge model was
+    fit on (TRFDecoder._X_mean / ._X_std), since Haufe's identity requires w
+    and Cov(X) to be defined consistently in the same space.
+
+    Returns (channel_magnitude (64,), pattern_matrix (n_lags, 64)) -- the
+    magnitude is the L2 norm across lags per channel, a standard summary of
+    a temporally-extended (lagged) response's overall size.
+    """
+    from aad_xai.models.trf_baseline import lag_matrix
+
+    eeg_concat = np.concatenate([ds[i][0].numpy() for i in window_indices], axis=0)  # (n_times, 64)
+    X = lag_matrix(eeg_concat.T, trf.lags_)      # (n_times, 64*n_lags), raw
+    X_z = (X - trf._X_mean) / trf._X_std          # exact training-time standardization
+    y_hat = X_z @ trf.model.coef_                 # (n_times,), z-scored prediction
+
+    n_lags = len(trf.lags_)
+    var_yhat = float(np.var(y_hat))
+    if var_yhat < 1e-12:
+        return np.zeros(64), np.zeros((n_lags, 64))
+
+    Xc = X_z - X_z.mean(axis=0, keepdims=True)
+    yc = y_hat - y_hat.mean()
+    pattern_full = (Xc * yc[:, None]).mean(axis=0) / var_yhat  # (64*n_lags,)
+
+    pattern_matrix = pattern_full.reshape(n_lags, 64)  # matches lag_matrix's per-lag column blocks
+    channel_magnitude = np.sqrt((pattern_matrix ** 2).sum(axis=0))
+    return channel_magnitude, pattern_matrix
+
+
+def _safe_spearman(a, b):
+    from scipy.stats import spearmanr
+    r, p = spearmanr(a, b)
+    r = 0.0 if np.isnan(r) else float(r)
+    p = 1.0 if np.isnan(p) else float(p)
+    return r, p
+
+
+def section_k_haufe(trf, ds, montage_path, vlaai_results_dir, n_boot, seed, dirs,
+                     max_samples_per_subject=100):
+    """Haufe-transform the trained TRF decoder, aggregate to the shared
+    9-ROI montage (config/dtu_channel_montage.csv, via load_montage_rois --
+    NOT this file's own ad hoc 6-ROI `ROIS` constant used by sections C-J),
+    and compare against VLAAI's combined_score channel ranking at both the
+    channel and ROI level -- reported as a single group-level correlation
+    and as a per-subject distribution with Wilcoxon + bootstrap CI,
+    consistent with the rest of this repo's statistical layer.
+
+    VLAAI-only per project scope decision: AADNet's own DTU channel loader
+    (external/AADNet/aadnet/dataset.py) uses a different 64-channel name
+    ordering than config/dtu_channel_montage.csv (confirmed by direct code
+    inspection; unverified against raw DTU .mat files, which are not present
+    in this checkout) -- an AADNet-vs-Haufe comparison is deliberately not
+    attempted here to avoid a silently mislabeled channel comparison.
+
+    Saves: haufe_baseline_comparison.csv, haufe_per_subject_rho.csv,
+    haufe_summary.json, haufe_vs_combined_score.png
+    """
+    import pandas as pd
+    from scipy.stats import wilcoxon
+    from aad_xai.xai import load_montage_rois
+
+    print("\n" + "=" * 70)
+    print("SECTION K (Phase 3): HAUFE TRANSFORM vs VLAAI combined_score")
+    print("=" * 70)
+    out = dirs["haufe"]
+
+    vlaai_ci_path = Path(vlaai_results_dir) / "channel_importance.csv"
+    if not vlaai_ci_path.exists():
+        print(f"  SKIPPED: VLAAI channel_importance.csv not found at {vlaai_ci_path}")
+        print("  Run scripts/run_focused_xai.py first, then re-run this script.")
+        save_json({"skipped": True, "reason": f"missing {vlaai_ci_path}"}, out / "haufe_summary.json")
+        return None
+
+    vlaai_df = pd.read_csv(vlaai_ci_path).set_index("channel").sort_index()
+    if len(vlaai_df) != 64:
+        raise ValueError(f"Expected 64 channels in {vlaai_ci_path}, found {len(vlaai_df)}")
+    vlaai_combined = vlaai_df["combined_score"].values  # (64,), channel-index-ordered
+
+    ch_name, ch_roi, name_to_idx, rois = load_montage_rois(str(montage_path))
+
+    # ── Per-subject Haufe pattern (one shared TRF, evaluated per subject) ──
+    unique_subjects = sorted(set(ds.subject_ids.tolist()))
+    per_subject_pattern = []
+    for subj in unique_subjects:
+        idxs = np.where(ds.subject_ids == subj)[0]
+        if len(idxs) > max_samples_per_subject:
+            idxs = idxs[:max_samples_per_subject]
+        pattern, _ = haufe_pattern_for_windows(trf, ds, idxs.tolist())
+        per_subject_pattern.append(pattern)
+    per_subject_pattern = np.stack(per_subject_pattern)  # (n_subj, 64)
+    mean_subject_pattern = per_subject_pattern.mean(axis=0)
+    print(f"  Per-subject Haufe patterns computed for {len(unique_subjects)} subjects "
+          f"(up to {max_samples_per_subject} windows each)")
+
+    # ── Channel-level comparison ─────────────────────────────────────────
+    rho_ch_group, p_ch_group = _safe_spearman(mean_subject_pattern, vlaai_combined)
+    per_subject_rho_ch = np.array([_safe_spearman(per_subject_pattern[s], vlaai_combined)[0]
+                                    for s in range(len(unique_subjects))])
+    mean_rho_ch, ci_lo_ch, ci_hi_ch = bootstrap_ci(per_subject_rho_ch, n_boot, seed=seed)
+    wilcox_p_ch = float(wilcoxon(per_subject_rho_ch)[1]) if (
+        len(per_subject_rho_ch) >= 3 and np.any(per_subject_rho_ch != 0)) else 1.0
+
+    # ── ROI-level comparison ─────────────────────────────────────────────
+    roi_names = list(rois.keys())
+    vlaai_roi = np.array([vlaai_combined[rois[r]].mean() for r in roi_names])
+    mean_subject_roi = np.array([mean_subject_pattern[rois[r]].mean() for r in roi_names])
+    rho_roi_group, p_roi_group = _safe_spearman(mean_subject_roi, vlaai_roi)
+
+    per_subject_roi_pattern = np.array([
+        [per_subject_pattern[s][rois[r]].mean() for r in roi_names]
+        for s in range(len(unique_subjects))
+    ])  # (n_subj, n_roi)
+    per_subject_rho_roi = np.array([_safe_spearman(per_subject_roi_pattern[s], vlaai_roi)[0]
+                                     for s in range(len(unique_subjects))])
+    mean_rho_roi, ci_lo_roi, ci_hi_roi = bootstrap_ci(per_subject_rho_roi, n_boot, seed=seed + 1)
+    wilcox_p_roi = float(wilcoxon(per_subject_rho_roi)[1]) if (
+        len(per_subject_rho_roi) >= 3 and np.any(per_subject_rho_roi != 0)) else 1.0
+
+    print(f"  Channel-level: group rho={rho_ch_group:+.3f} (p={p_ch_group:.4f}); "
+          f"per-subject mean rho={mean_rho_ch:+.3f} [{ci_lo_ch:+.3f},{ci_hi_ch:+.3f}] "
+          f"wilcoxon p={wilcox_p_ch:.4f}")
+    print(f"  ROI-level:     group rho={rho_roi_group:+.3f} (p={p_roi_group:.4f}); "
+          f"per-subject mean rho={mean_rho_roi:+.3f} [{ci_lo_roi:+.3f},{ci_hi_roi:+.3f}] "
+          f"wilcoxon p={wilcox_p_roi:.4f}")
+
+    # ── haufe_baseline_comparison.csv (channel level) ───────────────────
+    rows = [{
+        "channel": ch, "electrode_name": ch_name.get(ch, f"Ch{ch}"), "roi": ch_roi.get(ch, "Unknown"),
+        "haufe_magnitude": float(mean_subject_pattern[ch]), "vlaai_combined_score": float(vlaai_combined[ch]),
+    } for ch in range(64)]
+    fieldnames = ["channel", "electrode_name", "roi", "haufe_magnitude", "vlaai_combined_score"]
+    with open(out / "haufe_baseline_comparison.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(rows)
+    print("  Saved haufe_baseline_comparison.csv (64 rows)")
+
+    # ── Per-subject rho + raw pattern array, for downstream reuse ───────
+    np.save(out / "per_subject_channel_haufe_pattern.npy", per_subject_pattern)
+    subj_rows = [{"subject_id": subj, "rho_channel": float(per_subject_rho_ch[s]),
+                  "rho_roi": float(per_subject_rho_roi[s])}
+                 for s, subj in enumerate(unique_subjects)]
+    with open(out / "haufe_per_subject_rho.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["subject_id", "rho_channel", "rho_roi"])
+        w.writeheader()
+        w.writerows(subj_rows)
+    print("  Saved haufe_per_subject_rho.csv + per_subject_channel_haufe_pattern.npy")
+
+    # ── Summary JSON ──────────────────────────────────────────────────────
+    summary = {
+        "n_subjects": len(unique_subjects),
+        "max_samples_per_subject": max_samples_per_subject,
+        "channel_level": {
+            "group_rho": rho_ch_group, "group_p": p_ch_group,
+            "per_subject_mean_rho": mean_rho_ch, "per_subject_ci_lo": ci_lo_ch,
+            "per_subject_ci_hi": ci_hi_ch, "wilcoxon_p": wilcox_p_ch,
+        },
+        "roi_level": {
+            "group_rho": rho_roi_group, "group_p": p_roi_group,
+            "per_subject_mean_rho": mean_rho_roi, "per_subject_ci_lo": ci_lo_roi,
+            "per_subject_ci_hi": ci_hi_roi, "wilcoxon_p": wilcox_p_roi,
+        },
+        "scope_note": (
+            "VLAAI-only comparison. AADNet's DTU channel-name ordering differs "
+            "from config/dtu_channel_montage.csv (confirmed by code inspection, "
+            "unverified against raw DTU data in this checkout) -- an AADNet-vs-"
+            "Haufe comparison was not attempted to avoid a silently mislabeled "
+            "channel mapping. Verify channel order against a raw DTU .mat file's "
+            "dim.chan.eeg metadata before extending this to AADNet."
+        ),
+    }
+    save_json(summary, out / "haufe_summary.json")
+    print("  Saved haufe_summary.json")
+
+    # ── Scatter plot: Haufe magnitude vs combined_score, colored by ROI ──
+    roi_of_channel = [ch_roi.get(ch, "Unknown") for ch in range(64)]
+    present_rois = sorted(set(roi_of_channel))
+    cmap = plt.get_cmap("tab10")
+    roi_color = {r: cmap(i % 10) for i, r in enumerate(present_rois)}
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    for r in present_rois:
+        idxs = [ch for ch in range(64) if roi_of_channel[ch] == r]
+        ax.scatter(vlaai_combined[idxs], mean_subject_pattern[idxs],
+                   label=r, color=roi_color[r], alpha=0.8, s=35)
+    ax.set_xlabel("VLAAI combined_score")
+    ax.set_ylabel("Haufe activation-pattern magnitude (TRF)")
+    ax.set_title(f"Haufe pattern vs VLAAI combined_score\n"
+                 f"channel-level rho={rho_ch_group:+.3f} (group), "
+                 f"{mean_rho_ch:+.3f} [{ci_lo_ch:+.3f},{ci_hi_ch:+.3f}] (per-subject mean)")
+    ax.legend(fontsize=7, loc="best")
+    plt.tight_layout()
+    plt.savefig(out / "haufe_vs_combined_score.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  Saved haufe_vs_combined_score.png")
+
+    return summary
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Comparison report generation
 # ══════════════════════════════════════════════════════════════════════
 def generate_comparison(vlaai_dir: Path, trf_dir: Path, out_dir: Path):
@@ -927,6 +1147,19 @@ def main():
     if "J" in sections:
         section_j_trf(decision, trf, eeg_all, att_all, unatt_all,
                       args.n_boot, args.seed, dirs)
+
+    # ── Section K: Haufe transform vs VLAAI combined_score (Phase 3) ──
+    if not args.skip_haufe:
+        try:
+            section_k_haufe(trf, ds, args.montage_file, args.vlaai_results,
+                            args.n_boot, args.seed, dirs,
+                            max_samples_per_subject=args.haufe_max_samples_per_subject)
+        except Exception as exc:
+            print(f"  WARNING: Section K (Haufe transform) failed: {exc}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("\nSection K (Haufe transform) skipped via --skip-haufe.")
 
     # ── Comparison report ────────────────────────────────────────────
     trf_xai_dir = dirs["trf_xai"]
