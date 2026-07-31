@@ -7,20 +7,27 @@
 # ---
 
 # %% [markdown]
-# # TRF vs VLAAI XAI Comparison — Kaggle Notebook
+# # TRF vs VLAAI/AADNet XAI Comparison — Kaggle Notebook
 #
 # Runs `scripts/run_xai_trf_comparison.py`: trains a linear backward TRF
 # decoder on the same DTU windows VLAAI uses, runs the model-agnostic XAI
-# sections (C, D, H, I, J) on it, applies the Haufe transform (Section K,
-# Phase 3) to compare against VLAAI's `combined_score` channel ranking, and
-# generates a side-by-side comparison report against VLAAI's existing XAI
-# results.
+# sections (C, D, H, I, J) on it, applies the Haufe transform to compare
+# against VLAAI's `combined_score` channel ranking (Section K, Phase 3) and,
+# if AADNet's kernel output is attached, against AADNet's own
+# `combined_score` ranking via name-based channel alignment (Section K2,
+# Phase 3 extension), and generates a side-by-side comparison report against
+# VLAAI's existing XAI results.
 #
 # **Kaggle setup requirements**
 # - Attach the dataset `dulanamanjitha/aad-xai-artifacts` (holds the DTU
 #   preprocessed `.npz` files VLAAI itself uses)
 # - Add Data → Kernel Output → attach `dulanamanjitha/vlaai-xai` (needed for
 #   `channel_importance.csv`, i.e. VLAAI's `combined_score` ranking)
+# - Add Data → Kernel Output → attach `dulanamanjitha/aadnet-xai` (needed for
+#   Section K2 — AADNet's own `channel_importance.csv` with `combined_score`,
+#   from a run that post-dates the Part 0 montage-label fix. Optional: if not
+#   attached, Section K2 is skipped with an explicit message, everything else
+#   still runs.)
 # - Enable Internet + GPU (same as the other XAI notebooks — TRF fitting
 #   itself is CPU-friendly, but the shared occlusion/permutation XAI
 #   machinery this script reuses is written against torch tensors, so
@@ -61,17 +68,23 @@ except ImportError:
 os.system("pip install -q -e .")
 
 # %% [markdown]
-# ## 2. Locate the attached VLAAI kernel-output data
+# ## 2. Locate the attached VLAAI and (optional) AADNet kernel-output data
 #
 # Kernel-output data sources have been observed to mount at
 # `/kaggle/input/notebooks/<owner>/<slug>/`, not the flat `/kaggle/input/<slug>/`
-# one might expect -- so this searches recursively for VLAAI's
-# `channel_importance.csv` rather than assuming a fixed path.
+# one might expect -- so this searches recursively for each model's
+# `channel_importance.csv` rather than assuming a fixed path. Both models'
+# output directories can contain a same-named `channel_importance.csv`, so
+# matches are disambiguated by checking for `aadnet-xai` / `vlaai-xai` in the
+# matched path (the kernel-output mount always embeds the source kernel's
+# slug).
 
 # %%
 import glob
 
-_vlaai_matches = glob.glob("/kaggle/input/**/channel_importance.csv", recursive=True)
+_all_ci_matches = glob.glob("/kaggle/input/**/channel_importance.csv", recursive=True)
+
+_vlaai_matches = [p for p in _all_ci_matches if "vlaai-xai" in p.replace("\\", "/")]
 if not _vlaai_matches:
     _all_input = glob.glob("/kaggle/input/**/*", recursive=True)
     raise FileNotFoundError(
@@ -81,6 +94,16 @@ if not _vlaai_matches:
     )
 VLAAI_RESULTS_DIR = os.path.dirname(_vlaai_matches[0])
 print("VLAAI results dir:", VLAAI_RESULTS_DIR)
+
+_aadnet_matches = [p for p in _all_ci_matches if "aadnet-xai" in p.replace("\\", "/")]
+if _aadnet_matches:
+    AADNET_CHANNEL_IMPORTANCE = _aadnet_matches[0]
+    print("AADNet channel_importance.csv:", AADNET_CHANNEL_IMPORTANCE)
+else:
+    AADNET_CHANNEL_IMPORTANCE = None
+    print("AADNet kernel output not attached (or channel_importance.csv not found) "
+          "-- Section K2 (Haufe vs AADNet) will be skipped. "
+          "Attach dulanamanjitha/aadnet-xai as a Kernel Output data source to enable it.")
 
 # %% [markdown]
 # ## 3. Verify GPU and data paths
@@ -98,19 +121,23 @@ if torch.cuda.is_available():
 # path won't exist on a fresh clone.
 DATA_DIR = os.path.join(REPO_DIR, "data", "vlaai_dtu_npz")
 MONTAGE_FILE = os.path.join(REPO_DIR, "config", "dtu_channel_montage.csv")
+AADNET_MONTAGE_FILE = os.path.join(REPO_DIR, "config", "aadnet_dtu_channel_montage.csv")
 OUTPUT = "/kaggle/working/xai_results_trf_comparison"
 
 assert os.path.isdir(DATA_DIR), f"Missing data dir: {DATA_DIR}"
 npz_count = len([f for f in os.listdir(DATA_DIR) if f.endswith(".npz")])
 print(f"Data dir: {DATA_DIR} ({npz_count} .npz files)")
 print(f"VLAAI results: {VLAAI_RESULTS_DIR}")
+print(f"AADNet channel_importance: {AADNET_CHANNEL_IMPORTANCE}")
 print(f"Output: {OUTPUT}")
 
 # %% [markdown]
-# ## 4. Run TRF vs VLAAI XAI comparison (Sections C, D, H, I, J, K)
+# ## 4. Run TRF vs VLAAI/AADNet XAI comparison (Sections C, D, H, I, J, K, K2)
 #
 # Section K (Phase 3) is the Haufe-transform comparison against VLAAI's
-# `combined_score`; the rest (C/D/H/I/J) are the pre-existing occlusion-based
+# `combined_score`; Section K2 (Phase 3 extension) is the same comparison
+# against AADNet's `combined_score`, run only if AADNet's kernel output was
+# found in step 2; the rest (C/D/H/I/J) are the pre-existing occlusion-based
 # TRF-vs-VLAAI comparison this script already did before Phase 3 was added.
 
 # %%
@@ -125,6 +152,11 @@ cmd = [
     "--max-samples", "200",
     "--n-boot", "1000",
 ]
+if AADNET_CHANNEL_IMPORTANCE:
+    cmd += [
+        "--aadnet-montage-file", AADNET_MONTAGE_FILE,
+        "--aadnet-channel-importance", AADNET_CHANNEL_IMPORTANCE,
+    ]
 
 print("Command:", " ".join(cmd))
 print("=" * 70)
@@ -183,7 +215,31 @@ else:
     print("haufe_vs_combined_score.png not found.")
 
 # %% [markdown]
-# ## 7. Download results
+# ## 7. Display the Haufe-vs-AADNet comparison (Phase 3 extension, Section K2)
+#
+# Only produced if AADNet's kernel output was attached (step 2). Uses
+# name-based channel alignment across the 58 electrode names shared between
+# VLAAI's and AADNet's different montages.
+
+# %%
+k2_summary_path = os.path.join(haufe_dir, "haufe_vs_aadnet_summary.json")
+if os.path.isfile(k2_summary_path):
+    import json
+    with open(k2_summary_path) as f:
+        print(json.dumps(json.load(f), indent=2))
+else:
+    print("haufe_vs_aadnet_summary.json not found "
+          "(AADNet kernel output not attached, or Section K2 skipped/failed above).")
+
+# %%
+k2_plot = os.path.join(haufe_dir, "haufe_vs_aadnet_scatter.png")
+if os.path.isfile(k2_plot):
+    display(Image(filename=k2_plot))
+else:
+    print("haufe_vs_aadnet_scatter.png not found.")
+
+# %% [markdown]
+# ## 8. Download results
 #
 # All results are saved under `/kaggle/working/xai_results_trf_comparison/`.
 # Use the Kaggle **"Save Version"** button to download them as an output
