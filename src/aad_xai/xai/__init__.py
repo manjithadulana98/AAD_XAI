@@ -55,6 +55,8 @@ _try_import("composite_stability", [
     "select_best_roi",
     "select_top_k_channels",
     "cross_validate_selection",
+    "safe_spearman",
+    "leave_one_out_ranking_reliability",
 ])
 
 del _try_import

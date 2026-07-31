@@ -151,3 +151,69 @@ def cross_validate_selection(mat, select_fn, n_splits: int = 500, seed: int = 42
         results.append({"split": i, "p": p, "cohens_d": cohens_d(test_composite), "sig": p < alpha})
     rate = float(np.mean([r["sig"] for r in results])) if results else float("nan")
     return rate, pd.DataFrame(results)
+
+
+def safe_spearman(a, b):
+    """Spearman correlation with NaN-safe fills (0.0 for rho, 1.0 for p).
+    Consolidates the three slightly different inline idioms this repo had
+    accumulated across scripts/run_focused_xai.py, notebooks/kaggle_run_xai_aadnet.py,
+    and scripts/run_xai_trf_comparison.py's own `_safe_spearman` -- this is now
+    the one shared version."""
+    from scipy.stats import spearmanr
+    r, p = spearmanr(a, b)
+    r = 0.0 if np.isnan(r) else float(r)
+    p = 1.0 if np.isnan(p) else float(p)
+    return r, p
+
+
+def leave_one_out_ranking_reliability(mat, n_boot: int = 2000, seed: int = 42):
+    """Phase 4: held-out-subject channel-ranking validation.
+
+    For each subject row, compares that subject's own profile against (a) the
+    mean of the OTHER n-1 subjects (leave-one-out -- a ranking this subject
+    had no say in) and (b) the mean of ALL subjects including themselves (the
+    "subject-vs-group-mean" baseline several pipelines already report). If
+    LOO and baseline rho are similar, weak cross-subject consistency is a
+    genuine property of the data, not an artifact of each subject being
+    included in the very group average they're compared against.
+
+    Parameters
+    ----------
+    mat : (n_subjects, n_channels) array. Pass whatever ranking-criterion
+        matrix the caller's own split-half reliability already uses (e.g.
+        |occ|+|perm| combined, or occlusion-only), so these numbers are
+        directly comparable to that existing statistic.
+
+    Returns
+    -------
+    (per_subject_df, summary_dict) -- per_subject_df has one row per subject
+    with rho_loo/p_loo/rho_baseline/p_baseline; summary_dict has the mean +/-
+    bootstrap CI for both distributions plus a Wilcoxon test on the LOO rhos.
+    """
+    n_subj = mat.shape[0]
+    group_mean_incl = mat.mean(axis=0)
+
+    rows = []
+    for i in range(n_subj):
+        others_mean = np.delete(mat, i, axis=0).mean(axis=0)
+        rho_loo, p_loo = safe_spearman(mat[i], others_mean)
+        rho_baseline, p_baseline = safe_spearman(mat[i], group_mean_incl)
+        rows.append({
+            "subject_row": i,
+            "rho_loo": rho_loo, "p_loo": p_loo,
+            "rho_baseline": rho_baseline, "p_baseline": p_baseline,
+        })
+    df = pd.DataFrame(rows)
+
+    loo_mean, loo_lo, loo_hi = bootstrap_ci(df["rho_loo"].values, n_boot, seed=seed)
+    base_mean, base_lo, base_hi = bootstrap_ci(df["rho_baseline"].values, n_boot, seed=seed + 1)
+    loo_wilcox_p = wilcoxon_p(df["rho_loo"].values)
+
+    summary = {
+        "n_subjects": n_subj,
+        "loo_mean_rho": loo_mean, "loo_ci_lo": loo_lo, "loo_ci_hi": loo_hi,
+        "loo_wilcoxon_p": loo_wilcox_p,
+        "baseline_mean_rho": base_mean, "baseline_ci_lo": base_lo, "baseline_ci_hi": base_hi,
+        "loo_vs_baseline_diff": loo_mean - base_mean,
+    }
+    return df, summary

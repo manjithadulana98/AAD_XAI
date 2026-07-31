@@ -92,6 +92,8 @@ def parse_args():
                    help="Channel-count step size for the deletion/insertion K sweep.")
     p.add_argument("--faithfulness-random-perms", type=int, default=20,
                    help="Number of random-ordering replicates for the faithfulness control curve.")
+    p.add_argument("--skip-held-out-validation", action="store_true",
+                   help="Skip held-out-subject channel-ranking validation (Section H.9 / Phase 4).")
     return p.parse_args()
 
 
@@ -3354,6 +3356,67 @@ def run_combined_roi_analysis(subj_occ, subj_perm, unique_subjects, montage,
 
 
 # ══════════════════════════════════════════════════════════════════════
+# SECTION H.9 — Phase 4: Held-Out-Subject Channel-Ranking Validation
+# ══════════════════════════════════════════════════════════════════════
+
+def run_held_out_subject_validation(subj_occ, subj_perm, unique_subjects,
+                                    split_half_result, out_dir, n_boot, seed):
+    """For each subject, build a channel-importance ranking using only the
+    OTHER 17 subjects (leave-one-out), then measure Spearman correlation
+    against that subject's own profile. Reports this alongside the existing
+    split-half reliability number, and flags whether it meaningfully
+    improves on the raw subject-vs-group-mean correlation (which includes
+    each subject in their own comparison average).
+
+    Uses the exact same ranking criterion as Section H.4's split-half test
+    (combined_abs = |occ| + |perm|) so these numbers are directly comparable
+    to the already-reported split-half reliability.
+
+    Saves: held_out_subject_reliability.csv
+    """
+    from aad_xai.xai import leave_one_out_ranking_reliability
+
+    print("\n  [H.9] Held-out-subject channel-ranking validation (Phase 4)...")
+    n_subj = len(unique_subjects)
+    if n_subj < 4:
+        print("  WARNING: too few subjects for leave-one-out (<4). Skipping.")
+        return {}
+
+    combined_abs = np.abs(subj_occ) + np.abs(subj_perm)  # (n_subj, 64) -- matches H.4's criterion
+    per_subject_df, summary = leave_one_out_ranking_reliability(combined_abs, n_boot=n_boot, seed=seed)
+
+    rows = []
+    for i, subj in enumerate(unique_subjects):
+        row = per_subject_df.iloc[i].to_dict()
+        row["subject_id"] = subj
+        rows.append(row)
+    fieldnames = ["subject_id", "rho_loo", "p_loo", "rho_baseline", "p_baseline"]
+    with open(out_dir / "held_out_subject_reliability.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: r[k] for k in fieldnames})
+    print(f"  [H.9] Saved held_out_subject_reliability.csv ({len(rows)} subjects)")
+
+    print(f"  [H.9] Leave-one-out:        mean rho={summary['loo_mean_rho']:+.3f} "
+          f"[{summary['loo_ci_lo']:+.3f},{summary['loo_ci_hi']:+.3f}]  "
+          f"Wilcoxon p={summary['loo_wilcoxon_p']:.4f}")
+    print(f"  [H.9] Baseline (incl-self): mean rho={summary['baseline_mean_rho']:+.3f} "
+          f"[{summary['baseline_ci_lo']:+.3f},{summary['baseline_ci_hi']:+.3f}]")
+    print(f"  [H.9] LOO vs baseline diff: {summary['loo_vs_baseline_diff']:+.4f} "
+          "(near zero -> weak cross-subject consistency is real, not self-inclusion inflation)")
+    if split_half_result:
+        print(f"  [H.9] For comparison, split-half median rho = {split_half_result.get('median_rho', float('nan')):+.3f} "
+              f"[{split_half_result.get('ci_lo', float('nan')):+.3f},{split_half_result.get('ci_hi', float('nan')):+.3f}] "
+              f"({split_half_result.get('n_iter', 0)} iterations)")
+
+    summary["split_half_median_rho"] = split_half_result.get("median_rho") if split_half_result else None
+    save_json(summary, out_dir / "held_out_subject_reliability_summary.json")
+    print("  [H.9] Saved held_out_subject_reliability_summary.json")
+    return summary
+
+
+# ══════════════════════════════════════════════════════════════════════
 # SECTION I — Sanity checks (Adebayo et al. cascading parameter randomization)
 # ══════════════════════════════════════════════════════════════════════
 
@@ -4147,6 +4210,20 @@ def main():
         subject_val["subj_occ"], subject_val["subj_perm"],
         subject_val["unique_subjects"], montage, out_dir,
         args.n_boot, args.seed)
+
+    # ── H.9: Held-out-subject validation (Phase 4) ───────────────
+    if not args.skip_held_out_validation:
+        try:
+            held_out_result = run_held_out_subject_validation(
+                subject_val["subj_occ"], subject_val["subj_perm"],
+                subject_val["unique_subjects"], subject_val["split_half"],
+                out_dir, args.n_boot, args.seed)
+        except Exception as exc:
+            print(f"  WARNING: Section H.9 (held-out-subject validation) failed: {exc}")
+            import traceback as _tb
+            _tb.print_exc()
+    else:
+        print("\nSection H.9 (held-out-subject validation) skipped via --skip-held-out-validation.")
 
     # ── Section I: Sanity checks (cascading parameter randomization) ─
     if not args.skip_sanity_checks:
