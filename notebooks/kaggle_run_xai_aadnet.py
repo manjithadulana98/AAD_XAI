@@ -379,7 +379,17 @@ def load_montage(csv_path):
         rois.setdefault(roi, []).append(ch_idx)
     return ch_by_idx, roi_by_idx, rois
 
-MONTAGE_PATH = os.path.join(REPO_DIR, "config", "dtu_channel_montage.csv")
+MONTAGE_PATH = os.path.join(REPO_DIR, "config", "aadnet_dtu_channel_montage.csv")
+# NOTE (bug fix): this used to point at config/dtu_channel_montage.csv, which
+# uses a DIFFERENT 64-channel name/order (a generic BioSemi-64 template) than
+# AADNet's actual channel order ("Fuglsang-64", hardcoded at
+# external/AADNet/aadnet/dataset.py:382 / config_AADNet_SS_DTU.yml:18) -- 58
+# of 64 names matched but at different index positions, and 6 names (Iz, AFz,
+# FCz, Fpz, P9, P10 vs TP9, TP10, PO9, PO10, M1, M2) didn't match at all. Every
+# channel name/ROI this notebook ever printed was therefore mislabeled. Fixed
+# by pointing at the new config/aadnet_dtu_channel_montage.csv, built directly
+# from AADNet's own authoritative channel list -- see that file and
+# scripts/relabel_aadnet_channels.py (which corrects already-completed runs).
 CH_NAME, CH_ROI, ROIS = load_montage(MONTAGE_PATH)
 print(f"Loaded montage — {len(CH_NAME)} channels, {len(ROIS)} ROIs: {list(ROIS)}")
 
@@ -1497,3 +1507,56 @@ print(f"[{time.time()-t_start:6.0f}s] Phase 5 complete.")
 del _faith_model_wrapper, _faith_model
 if torch.cuda.is_available():
     torch.cuda.empty_cache()
+
+# %% [markdown]
+# ## 21. Phase 4 — Held-Out-Subject Channel-Ranking Validation
+#
+# For each subject, builds a channel-importance ranking using only the OTHER
+# 17 subjects (leave-one-out), then measures Spearman correlation against
+# that subject's own occlusion profile. Reported alongside the existing
+# split-half reliability number, and checked against the raw subject-vs-
+# group-mean correlation (which includes each subject in their own
+# comparison average -- a known source of spurious inflation this
+# leave-one-out design corrects for).
+#
+# Ranking criterion mirrors this notebook's own existing
+# `split_half_reliability(occ_subj_ch)` call (occlusion-only, no combination
+# with permutation) so these numbers are directly comparable to the
+# already-reported split-half reliability.
+#
+# Reuses `aad_xai.xai.leave_one_out_ranking_reliability` -- the same shared
+# function VLAAI's pipeline now also calls -- already proven importable in
+# this kernel (Sections 18/20 above already import from `aad_xai.xai`/
+# `aad_xai.models` successfully).
+
+# %%
+from aad_xai.xai import leave_one_out_ranking_reliability
+
+print(f"[{time.time()-t_start:6.0f}s] PHASE 4 — held-out-subject channel-ranking validation")
+
+_loo_df, _loo_summary = leave_one_out_ranking_reliability(occ_subj_ch, n_boot=N_BOOT, seed=RANDOM_SEED)
+
+_loo_rows = []
+for _i, _subj in enumerate(subject_ids):
+    _row = _loo_df.iloc[_i].to_dict()
+    _row["subject_id"] = _subj
+    _loo_rows.append(_row)
+_loo_fields = ["subject_id", "rho_loo", "p_loo", "rho_baseline", "p_baseline"]
+pd.DataFrame(_loo_rows)[_loo_fields].to_csv(OUT_DIR / "held_out_subject_reliability.csv", index=False)
+print(f"  Saved held_out_subject_reliability.csv ({len(_loo_rows)} subjects)")
+
+print(f"  Leave-one-out:        mean rho={_loo_summary['loo_mean_rho']:+.3f} "
+      f"[{_loo_summary['loo_ci_lo']:+.3f},{_loo_summary['loo_ci_hi']:+.3f}]  "
+      f"Wilcoxon p={_loo_summary['loo_wilcoxon_p']:.4f}")
+print(f"  Baseline (incl-self): mean rho={_loo_summary['baseline_mean_rho']:+.3f} "
+      f"[{_loo_summary['baseline_ci_lo']:+.3f},{_loo_summary['baseline_ci_hi']:+.3f}]")
+print(f"  LOO vs baseline diff: {_loo_summary['loo_vs_baseline_diff']:+.4f} "
+      "(near zero -> weak cross-subject consistency is real, not self-inclusion inflation)")
+print(f"  For comparison, split-half median rho = {split_half['median_rho']:+.3f} "
+      f"[{split_half['ci_lo']:+.3f},{split_half['ci_hi']:+.3f}] ({split_half['n_iter']} iterations)")
+
+_loo_summary["split_half_median_rho"] = split_half["median_rho"]
+with open(OUT_DIR / "held_out_subject_reliability_summary.json", "w") as f:
+    json.dump(_loo_summary, f, indent=2)
+print("  Saved held_out_subject_reliability_summary.json")
+print(f"[{time.time()-t_start:6.0f}s] Phase 4 complete.")
