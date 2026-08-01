@@ -150,43 +150,78 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(RANDOM_SEED)
 
 # %% [markdown]
-# ## 4. Authenticate to GCS
+# ## 4. Authenticate to GCS + list the bucket
 #
 # The notebook uses whichever credential source is available. If you added a
 # Kaggle Secret named `GCP_SA_JSON` (a service-account JSON key), it's used
 # automatically. Otherwise Application Default Credentials are used
 # (e.g. from `gcloud auth application-default login` on your workstation).
-
-# %%
-import json
-import tempfile
-
-try:
-    from kaggle_secrets import UserSecretsClient  # type: ignore
-    _sa_raw = UserSecretsClient().get_secret("GCP_SA_JSON")
-    _sa_path = os.path.join(tempfile.gettempdir(), "gcp_sa.json")
-    with open(_sa_path, "w") as f:
-        f.write(_sa_raw)
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _sa_path
-    sa_info = json.loads(_sa_raw)
-    print(f"Kaggle Secret GCP_SA_JSON found. Auth as: {sa_info.get('client_email','?')}")
-except Exception as _e:
-    print(f"Kaggle Secret GCP_SA_JSON not used ({type(_e).__name__}); falling back to Application Default Credentials.")
-
-# %% [markdown]
-# ## 5. List the bucket
+#
+# Kaggle's own internal secrets/GCP-link proxy has been observed to return a
+# connection error (HTTP 400 from its GET_USER_SECRET_ENDPOINT) during the
+# first ~minute of a fresh kernel session -- both for the Kaggle Secret
+# lookup and the Application Default Credentials fallback, since ADC is
+# itself routed through the same proxy on Kaggle. This retries the whole
+# auth + list-blobs sequence a few times with a short delay before giving up,
+# since a later attempt has been seen to succeed once the proxy recovers.
 #
 # Confirm the checkpoint layout before downloading. Expected filename pattern
 # (from `external/AADNet/cross_validate_ss.py`):
 #     `AADNet_SS_T_10_s_{subject}_fold_{fold}.pth`   for subject in 0..17, fold in 0..7
 
 # %%
+import json
+import tempfile
+import time
+
 from google.cloud import storage  # type: ignore
 
-client = storage.Client(project=GCP_PROJECT)
-bucket = client.bucket(GCS_BUCKET)
+GCS_CONNECT_MAX_ATTEMPTS = 5
+GCS_CONNECT_RETRY_DELAY_S = 20
 
-all_blobs = list(client.list_blobs(GCS_BUCKET, prefix=GCS_MODEL_PREFIX))
+
+def _authenticate_gcs():
+    try:
+        from kaggle_secrets import UserSecretsClient  # type: ignore
+        _sa_raw = UserSecretsClient().get_secret("GCP_SA_JSON")
+        _sa_path = os.path.join(tempfile.gettempdir(), "gcp_sa.json")
+        with open(_sa_path, "w") as f:
+            f.write(_sa_raw)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _sa_path
+        sa_info = json.loads(_sa_raw)
+        print(f"Kaggle Secret GCP_SA_JSON found. Auth as: {sa_info.get('client_email','?')}")
+    except Exception as _e:
+        print(f"Kaggle Secret GCP_SA_JSON not used ({type(_e).__name__}); falling back to Application Default Credentials.")
+
+
+client = None
+bucket = None
+all_blobs = None
+_last_exc = None
+for _attempt in range(1, GCS_CONNECT_MAX_ATTEMPTS + 1):
+    try:
+        _authenticate_gcs()
+        client = storage.Client(project=GCP_PROJECT)
+        bucket = client.bucket(GCS_BUCKET)
+        all_blobs = list(client.list_blobs(GCS_BUCKET, prefix=GCS_MODEL_PREFIX))
+        print(f"GCS connected on attempt {_attempt}/{GCS_CONNECT_MAX_ATTEMPTS}.")
+        break
+    except Exception as _e:
+        _last_exc = _e
+        print(f"  GCS connect attempt {_attempt}/{GCS_CONNECT_MAX_ATTEMPTS} failed: "
+              f"{type(_e).__name__}: {_e}")
+        if _attempt < GCS_CONNECT_MAX_ATTEMPTS:
+            print(f"  Retrying in {GCS_CONNECT_RETRY_DELAY_S}s...")
+            time.sleep(GCS_CONNECT_RETRY_DELAY_S)
+
+if all_blobs is None:
+    raise RuntimeError(
+        f"Could not connect to gs://{GCS_BUCKET}/{GCS_MODEL_PREFIX} after "
+        f"{GCS_CONNECT_MAX_ATTEMPTS} attempts. Last error: {_last_exc!r}. "
+        "Check Kaggle notebook Add-ons -> Secrets (GCP_SA_JSON) / Google Cloud "
+        "Services link."
+    ) from _last_exc
+
 print(f"Total blobs under gs://{GCS_BUCKET}/{GCS_MODEL_PREFIX}: {len(all_blobs)}")
 
 ss_blobs = [b for b in all_blobs if "AADNet_SS_T_" in b.name and b.name.endswith(".pth")]
