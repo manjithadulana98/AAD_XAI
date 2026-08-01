@@ -78,11 +78,29 @@ os.system("pip install -q -e .")
 # matches are disambiguated by checking for `aadnet-xai` / `vlaai-xai` in the
 # matched path (the kernel-output mount always embeds the source kernel's
 # slug).
+#
+# Both notebooks also clone the *full* AAD_XAI git repo into their working
+# directory (`REPO_DIR = "/kaggle/working/AAD_XAI"`), and the repo happens to
+# have a stale, pre-existing `channel_importance.csv` committed under
+# `Kaggle_results/Full run results/` (an old AADNet run that predates the
+# Part 0 montage-label fix -- confirmed by its channel 13 = "Cz", channel 42
+# = "FC4" labeling, the exact mislabeling that fix corrects). That stale file
+# therefore shows up as a match on BOTH kernels' outputs, nested inside their
+# cloned-repo copy, alongside the genuine fresh output written outside the
+# repo tree (`/kaggle/working/xai_results/...` or
+# `/kaggle/working/xai_results_aadnet/...`). Any match path containing
+# "/AAD_XAI/" is therefore excluded -- it can only be a file committed to the
+# repo itself, never a notebook's actual output directory.
 
 # %%
 import glob
 
 _all_ci_matches = glob.glob("/kaggle/input/**/channel_importance.csv", recursive=True)
+_stale_repo_matches = [p for p in _all_ci_matches if "/AAD_XAI/" in p.replace("\\", "/")]
+if _stale_repo_matches:
+    print(f"Ignoring {len(_stale_repo_matches)} channel_importance.csv match(es) committed "
+          f"inside the cloned repo tree (not a notebook's real output): {_stale_repo_matches}")
+_all_ci_matches = [p for p in _all_ci_matches if "/AAD_XAI/" not in p.replace("\\", "/")]
 
 _vlaai_matches = [p for p in _all_ci_matches if "vlaai-xai" in p.replace("\\", "/")]
 if not _vlaai_matches:
