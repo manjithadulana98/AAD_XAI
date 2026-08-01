@@ -3753,7 +3753,7 @@ def write_publication_summary(combined_channels, subject_val,
     L.append("B. ARCHITECTURE — BLOCK 3 DOMINANCE")
     L.append("-" * 40)
     if ablation:
-        b3 = next((b for b in ablation if "Block 3" in b.get("name", "")), None)
+        b3 = ablation.get("block_3", {}).get("zero_weights")
         if b3:
             L.append(f"  Block 3 zero-weight ablation: ΔP = {b3.get('delta_p_mean', 0.0):+.5f}, "
                      f"ΔAcc = {b3.get('delta_acc', 0.0):+.4f}")
