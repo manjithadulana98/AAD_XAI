@@ -70,12 +70,18 @@ def load_montage(montage_path):
     return ch_to_roi, rois
 
 
-def get_attended_prob(decision, eeg, att, unatt):
-    decision.set_envelopes(att, unatt)
-    with torch.no_grad():
-        logits = decision(eeg)
-        probs = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
-    return probs
+def get_attended_prob(decision, eeg, att, unatt, batch_size=1024):
+    """Mini-batched forward pass -- a single un-batched call over all 8100
+    windows at once was the direct cause of a CUDA OOM the first time this
+    ran (accumulated GPU memory across the 6 conditions, on top of a single
+    large batch each), confirmed on Kaggle T4 (14.6 GiB)."""
+    out = []
+    for i in range(0, eeg.shape[0], batch_size):
+        decision.set_envelopes(att[i:i + batch_size], unatt[i:i + batch_size])
+        with torch.no_grad():
+            logits = decision(eeg[i:i + batch_size])
+            out.append(torch.softmax(logits, dim=-1)[:, 1].cpu().numpy())
+    return np.concatenate(out)
 
 
 def bootstrap_ci(values, n_boot, seed):
@@ -157,6 +163,9 @@ def main():
         eeg_occ[:, :, chs] = 0.0
         probs_occ = get_attended_prob(decision, eeg_occ, att, unatt)
         conditions[f"{name}_occ"] = base_probs - probs_occ
+        del eeg_occ, probs_occ
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
         print(f"  {name} occlusion done ({len(chs)} ch simultaneously)")
 
         eeg_perm = eeg.clone()
@@ -165,6 +174,9 @@ def main():
             eeg_perm[:, :, ch] = eeg.index_select(0, perm)[:, :, ch]
         probs_perm = get_attended_prob(decision, eeg_perm, att, unatt)
         conditions[f"{name}_perm"] = base_probs - probs_perm
+        del eeg_perm, probs_perm
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
         print(f"  {name} permutation done ({len(chs)} ch simultaneously)")
 
     # --- Whole-brain band removal: theta (important) vs alpha (other) ---
@@ -173,8 +185,12 @@ def main():
         bc = band_content(eeg_np, band)
         eeg_band = eeg.clone()
         eeg_band -= torch.from_numpy(bc.astype(np.float32)).to(device)
+        del bc
         probs_band = get_attended_prob(decision, eeg_band, att, unatt)
         conditions[f"band_{band}"] = base_probs - probs_band
+        del eeg_band, probs_band
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
         print(f"  whole-brain {band}-band removal done (64 ch simultaneously)")
 
     decision.set_envelopes(att, unatt)  # restore
