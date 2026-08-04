@@ -85,8 +85,19 @@ class GraphConvKW(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, 64, T) -> diffuse through each of the K basis operators once,
         # then mix into C kernels with independent coefficients per kernel.
-        diffused = torch.einsum("kij,bjt->kbit", self.basis, x)          # (K, B, 64, T)
-        out = torch.einsum("kc,kbit->bcit", self.theta, diffused)        # (B, C, 64, T)
+        #
+        # Expressed via matmul/reshape rather than einsum: einsum's internal
+        # kernel dispatch was found (empirically, on a Kaggle-assigned Tesla
+        # P100 / compute capability sm_60) to hit a CUDA kernel not compiled
+        # into the pre-installed PyTorch wheel ("no kernel image is available
+        # for execution on the device"), whereas matmul/bmm route through
+        # cuBLAS, which has much broader compute-capability coverage.
+        B, N, T = x.shape
+        K = self.basis.shape[0]
+        diffused = torch.matmul(self.basis.unsqueeze(1), x.unsqueeze(0))     # (K, B, 64, T)
+        diffused_flat = diffused.reshape(K, B * N * T)                       # (K, B*64*T)
+        out_flat = torch.matmul(self.theta.t(), diffused_flat)               # (C, B*64*T)
+        out = out_flat.reshape(self.n_kernels, B, N, T).permute(1, 0, 2, 3)  # (B, C, 64, T)
         return out + self.bias.view(1, -1, 1, 1)
 
 
@@ -98,7 +109,7 @@ class STGCNGCNOnly(nn.Module):
     Input:  x  (B, 64, T)  -- channel-major, matching AADNet's DTUDataset
             output directly (no transpose needed vs. the paper's (T, 64)
             notation -- this is the same data, just indexed the other way,
-            and the graph-conv einsum above doesn't care which axis is last).
+            and the graph-conv matmuls above don't care which axis is last).
     Output: logits (B, 2)  -- attended/unattended class logits.
     """
 
