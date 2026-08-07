@@ -219,7 +219,9 @@ def run_fold(subject_id, fold, tr_split, te_split, keep_curve: bool):
         model.train()
         tr_loss_sum, tr_correct, tr_n = 0.0, 0, 0
         for eeg, _audio, y in train_loader:
-            eeg, y = eeg.to(DEVICE), y.to(DEVICE).long()
+            # DTUDataset yields float64 (the raw .mat EEG arrays are double-precision);
+            # the graph-conv basis buffer is float32, so this cast is required.
+            eeg, y = eeg.to(DEVICE).float(), y.to(DEVICE).long()
             opt.zero_grad()
             logits = model(eeg)
             loss = loss_fn(logits, y)
@@ -233,7 +235,7 @@ def run_fold(subject_id, fold, tr_split, te_split, keep_curve: bool):
         te_loss_sum, te_correct, te_n = 0.0, 0, 0
         with torch.no_grad():
             for eeg, _audio, y in test_loader:
-                eeg, y = eeg.to(DEVICE), y.to(DEVICE).long()
+                eeg, y = eeg.to(DEVICE).float(), y.to(DEVICE).long()
                 logits = model(eeg)
                 loss = loss_fn(logits, y)
                 te_loss_sum += loss.item() * y.size(0)
