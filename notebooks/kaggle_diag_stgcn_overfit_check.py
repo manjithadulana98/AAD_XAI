@@ -121,29 +121,41 @@ montage = load_montage(os.path.join(REPO_DIR, "config", "aadnet_dtu_channel_mont
 ADJACENCY = build_adjacency_distance(montage, k=6)
 
 # %% [markdown]
-# ## 4. One subject's SI-fold-0 training split -- take a small FIXED batch
+# ## 4. One subject's SI-fold-0 training split -- take a small, CLASS-BALANCED
+#    fixed batch
+#
+# DTU windows are drawn sequentially within a trial, and each trial has one
+# fixed attended speaker throughout -- so "the first N windows" of a training
+# split can land entirely inside a single trial (all one label), making
+# "memorize this batch" trivial (just bias toward the one class). Scan until
+# N_PER_CLASS examples of EACH label are found instead.
 
 # %%
 from aadnet.dataset import DTUDataset
 
 SUBJECT_ID = 0
-N_OVERFIT = 32   # tiny, fixed batch -- same 32 windows every epoch, no held-out eval
+N_PER_CLASS = 16   # -> 32 total, but guaranteed a real mix of both labels
 
 crossSIData = DTUDataset.createSICrossValidation(SUBJECT_ID, aadnet_config)
 tr_split, te_split = crossSIData[0]
 tr_eeg, tr_aud, tr_label = tr_split
 train_ds = DTUDataset(aadnet_config, tr_eeg, tr_aud, tr_label)
-print(f"Full training split size: {len(train_ds)} windows -- taking the first {N_OVERFIT} as a fixed overfit batch")
+print(f"Full training split size: {len(train_ds)} windows -- scanning for {N_PER_CLASS} examples of each label")
 
-fixed_eeg, fixed_y = [], []
-for i in range(N_OVERFIT):
+by_class = {0: [], 1: []}
+for i in range(len(train_ds)):
     eeg, _audio, y = train_ds[i]
-    fixed_eeg.append(eeg)
-    fixed_y.append(y)
-fixed_eeg = torch.stack(fixed_eeg).to(DEVICE).float()
-fixed_y = torch.stack(fixed_y).to(DEVICE).long()
+    cls = int(y.item())
+    if len(by_class[cls]) < N_PER_CLASS:
+        by_class[cls].append(eeg)
+    if len(by_class[0]) >= N_PER_CLASS and len(by_class[1]) >= N_PER_CLASS:
+        break
+
+fixed_eeg = torch.stack(by_class[0] + by_class[1]).to(DEVICE).float()
+fixed_y = torch.tensor([0] * len(by_class[0]) + [1] * len(by_class[1])).to(DEVICE).long()
 print(f"Fixed batch: eeg {tuple(fixed_eeg.shape)}, labels {fixed_y.tolist()}")
 print(f"Class balance: {int((fixed_y == 0).sum())} zeros, {int((fixed_y == 1).sum())} ones")
+assert by_class[0] and by_class[1], "Could not find both classes in this training split -- investigate labels."
 
 # %% [markdown]
 # ## 5. Train on ONLY this fixed batch for many epochs -- can it memorize?
@@ -179,7 +191,7 @@ for epoch in range(N_EPOCHS_OVERFIT):
 
 final_acc = acc_curve[-1]
 max_acc = max(acc_curve)
-print(f"\nFinal train accuracy on the fixed {N_OVERFIT}-window batch: {final_acc:.3f}")
+print(f"\nFinal train accuracy on the fixed {fixed_y.shape[0]}-window batch: {final_acc:.3f}")
 print(f"Max train accuracy reached at any epoch: {max_acc:.3f}")
 
 # %% [markdown]
