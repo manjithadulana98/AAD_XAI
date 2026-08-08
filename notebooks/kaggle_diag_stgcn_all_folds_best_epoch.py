@@ -86,6 +86,23 @@ print(f"PyTorch version : {torch.__version__}")
 print(f"CUDA available  : {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     print(f"GPU             : {torch.cuda.get_device_name(0)}")
+    # Fail fast (seconds, not the 33 minutes it takes to load all 18 subjects'
+    # data) if Kaggle assigned an old P100/sm_60 GPU incompatible with the
+    # pre-installed torch wheel's compiled kernels -- a known, recurring
+    # platform flakiness for this project, not a code issue. A plain matmul
+    # exercises the same "no kernel image available" failure mode this
+    # notebook would otherwise only discover after the data-loading phase.
+    try:
+        _probe = torch.randn(8, 8, device="cuda") @ torch.randn(8, 8, device="cuda")
+        torch.cuda.synchronize()
+        print("GPU compatibility probe: OK")
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"GPU compatibility probe FAILED on {torch.cuda.get_device_name(0)}: {e}\n"
+            "This is the known P100/sm_60 vs pre-installed-torch-wheel incompatibility -- "
+            "stop and re-push/re-run to get a different GPU assignment, rather than "
+            "waiting through the full data-loading phase to discover this."
+        ) from e
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
