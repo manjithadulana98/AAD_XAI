@@ -121,7 +121,7 @@ N_KERNELS = 5
 FC_HIDDEN = 8
 VAL_FRACTION = 0.2
 
-DIAG_FOLDS = [(0, 0), (12, 0)]
+DIAG_FOLDS = [(0, 0), (3, 0), (6, 0), (9, 0), (12, 0), (15, 0)]
 
 DTU_KAGGLE_ROOT_CANDIDATES = [
     "/kaggle/input/aad-xai-artifacts/datasets/DTU",
@@ -314,7 +314,7 @@ def run_fold(subject_id, fold, tr_split, te_split, pooling):
 t_start = time.time()
 all_rows = []
 summary_rows = []
-for pooling in ("mean", "meanvar", "none"):
+for pooling in ("meanvar",):  # baseline "mean" and "none" already on record from the 2-fold run; extending "meanvar" to all 6 folds now
     for subject_id, fold in DIAG_FOLDS:
         t_fold_start = time.time()
         crossSIData = DTUDataset.createSICrossValidation(subject_id, aadnet_config)
