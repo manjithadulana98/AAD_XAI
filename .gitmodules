@@ -1,3 +1,6 @@
 [submodule "external/vlaai"]
 	path = external/vlaai
 	url = https://github.com/exporl/vlaai.git
+[submodule "external/FAConformer"]
+	path = external/FAConformer
+	url = https://github.com/wzwvv/FAConformer.git
