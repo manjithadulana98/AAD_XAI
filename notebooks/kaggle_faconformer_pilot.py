@@ -280,8 +280,16 @@ def build_faconformer_loaders(eeg_data_list, event_data_list, time_len):
     train_data = train_data.transpose(0, 2, 1)
     test_data = test_data.transpose(0, 2, 1)
 
-    csp = CSP(n_components=args.csp_comp, reg=None, log=None, cov_est='concat', transform_into='csp_space',
-              norm_trace=True)
+    # FAConformer's own default is reg=None, but AADNet's DTUDataset re-references
+    # each subject's 64 selected channels against the mean of that SAME 64-channel
+    # set (dataset.py: ordinary_channels == selected_chs for DTU) -- a self-average
+    # reference that forces sum_channels(eeg[t]) == 0 at every timepoint, capping
+    # the true channel rank at 63. CSP's un-regularized GED needs a full-rank (64)
+    # covariance and fails on this deterministically (LinAlgError: leading minor of
+    # order 64 of B is not positive definite) on every subject, not just this one.
+    # Ledoit-Wolf shrinkage regularizes the covariance so CSP can still fit.
+    csp = CSP(n_components=args.csp_comp, reg='ledoit_wolf', log=None, cov_est='concat',
+              transform_into='csp_space', norm_trace=True)
     train_label = np.squeeze(train_label)
     train_data = csp.fit_transform(train_data, train_label)
     test_data = csp.transform(test_data)
