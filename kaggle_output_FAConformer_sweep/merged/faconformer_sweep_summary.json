@@ -1,0 +1,13 @@
+{
+  "seeds_present": [
+    41,
+    42,
+    43,
+    44,
+    45
+  ],
+  "n_seeds_present": 5,
+  "n_rows": 90,
+  "overall_mean_test_acc": 0.8795138888888887,
+  "overall_std_test_acc": 0.058200279451762794
+}
