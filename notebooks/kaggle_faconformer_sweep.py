@@ -238,13 +238,23 @@ def build_faconformer_loaders(eeg_data_list, event_data_list, time_len):
     args.window_length = math.ceil(args.fs * time_len)
     args.overlap = 0.5
     args.batch_size = 32
-    args.eeg_channel = 64
-    args.csp_comp = 64
+    args.eeg_channel = 64          # raw EEG channel count -- used only by sliding_window's reshape
+    # CSP output components. AADNet's DTUDataset self-average-references each
+    # subject's 64 selected channels against the mean of that SAME 64-channel
+    # set (dataset.py: ordinary_channels == selected_chs for DTU), which forces
+    # sum_channels(eeg[t]) == 0 at every timepoint and caps the TRUE rank at 63
+    # for every subject, deterministically. Requesting 64 components let MNE's
+    # internal rank estimator decide per-subject whether to silently reduce to
+    # 63 -- which it did inconsistently (S1-S10 got 64, S11 got 63), crashing
+    # FAConformer's in_planes=64-hardcoded first conv layer on the mismatch.
+    # Fixing n_components at 63 for every subject matches the true, structural
+    # rank ceiling so CSP never needs to auto-reduce again.
+    args.csp_comp = 63
 
     event_data = np.array(event_data_list)      # already 0/1, no "-1" step
 
     train_data, test_data, train_label, test_label = sliding_window(
-        eeg_data_list, event_data, args.window_length, args.overlap, args.csp_comp
+        eeg_data_list, event_data, args.window_length, args.overlap, args.eeg_channel
     )
 
     args.delta_low, args.delta_high = 1, 4
@@ -334,9 +344,9 @@ LAMDA = 1.0
 PATIENCE = 10
 
 
-def make_model_and_optimizer(window_length):
+def make_model_and_optimizer(in_planes, window_length):
     model = FAConformer(
-        data_name="DTU", in_planes=64, out_planes_branch=64, out_planes_total=32,
+        data_name="DTU", in_planes=in_planes, out_planes_branch=64, out_planes_total=32,
         kernel_size=63, radix=1, patch_size=32, time_points=window_length,
         num_classes=2, depth_branch=2, num_heads_branch=2,
         depth_total=2, num_heads_total=2, num_bands=8, dim_feedforward=16,
@@ -390,7 +400,7 @@ def train_one_subject(subject_idx, eeg_data_list, event_data_list):
     train_loader, valid_loader, test_loader, data_args = build_faconformer_loaders(
         eeg_data_list, event_data_list, TIME_LEN
     )
-    model, optimizer = make_model_and_optimizer(data_args.window_length)
+    model, optimizer = make_model_and_optimizer(data_args.csp_comp, data_args.window_length)
 
     if subject_idx == 0:
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

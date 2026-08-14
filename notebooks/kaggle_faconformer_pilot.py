@@ -240,8 +240,18 @@ def build_faconformer_loaders(eeg_data_list, event_data_list, time_len):
     args.window_length = math.ceil(args.fs * time_len)
     args.overlap = 0.5
     args.batch_size = 32
-    args.eeg_channel = 64
-    args.csp_comp = 64
+    args.eeg_channel = 64          # raw EEG channel count -- used only by sliding_window's reshape
+    # CSP output components. AADNet's DTUDataset self-average-references each
+    # subject's 64 selected channels against the mean of that SAME 64-channel
+    # set, capping the TRUE rank at 63 for every subject, deterministically
+    # (see the CSP reg='ledoit_wolf' note below). Requesting 64 components
+    # lets MNE's internal rank estimator decide per-subject whether to
+    # silently reduce to 63 -- confirmed (in the full 18-subject sweep) to be
+    # inconsistent across subjects, crashing FAConformer's in_planes=64-
+    # hardcoded first conv layer whenever a given subject's estimate lands on
+    # 63. Fixing n_components at 63 unconditionally matches the true,
+    # structural rank ceiling so CSP never needs to auto-reduce.
+    args.csp_comp = 63
 
     # Their own get_DTU_data forces all trials into one uniform ndarray via
     # np.array(eeg_data)+vstack+reshape -- but that's only needed there to
@@ -255,7 +265,7 @@ def build_faconformer_loaders(eeg_data_list, event_data_list, time_len):
     event_data = np.array(event_data_list)      # already 0/1, no "-1" step (see note above)
 
     train_data, test_data, train_label, test_label = sliding_window(
-        eeg_data_list, event_data, args.window_length, args.overlap, args.csp_comp
+        eeg_data_list, event_data, args.window_length, args.overlap, args.eeg_channel
     )
 
     args.delta_low, args.delta_high = 1, 4
@@ -348,7 +358,7 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 
 model_args = DotMap()
-model_args.channel = 64
+model_args.channel = data_args.csp_comp  # 63 -- must match build_faconformer_loaders' CSP output, not raw eeg_channel
 model_args.output_size_branch = 64
 model_args.output_size_total = 32
 model_args.patch_size = 32
