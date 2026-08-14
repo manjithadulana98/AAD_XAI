@@ -82,11 +82,11 @@ def main():
     summary_path = out_dir / "faconformer_sweep_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump({
-            "seeds_present": seeds_present,
+            "seeds_present": [int(s) for s in seeds_present],
             "n_seeds_present": len(seeds_present),
             "n_rows": n_rows,
-            "overall_mean_test_acc": overall_mean,
-            "overall_std_test_acc": overall_std,
+            "overall_mean_test_acc": float(overall_mean),
+            "overall_std_test_acc": float(overall_std),
         }, f, indent=2)
 
     print(f"\nSaved {per_subject_path}")
