@@ -246,6 +246,41 @@ class CustomDatasets(Dataset):
         return self.data[index], self.label[index]
 
 
+class CSPWindowDataset(Dataset):
+    """Holds only the CSP-transformed windows (one 'band' worth of data,
+    ~3GB for a large SI fold) -- NOT the 8-band-filtered representation.
+    Kept as a plain numpy array; band-filtering happens per-batch in
+    band_filter_collate, not here."""
+    def __init__(self, csp_windows, label):
+        self.csp_windows = csp_windows
+        self.label = label
+
+    def __len__(self):
+        return len(self.label)
+
+    def __getitem__(self, index):
+        return self.csp_windows[index], self.label[index]
+
+
+def make_band_filter_collate(points, window_length):
+    """Computes the 8-band FFT filtering for one BATCH at a time, not the
+    whole dataset. FAConformer's own get_DTU_data precomputes all 8 bands
+    for the entire dataset upfront -- fine at their own within-subject
+    scale (~54 trials), but this SI port's per-fold training pool is
+    ~17-20x larger (all other subjects' trials), and holding 8 full-size
+    copies of that (~24-30GB, confirmed by an OOM kernel death on the
+    first pilot push) doesn't fit. Deferring filter_signal_by_fft to
+    per-batch keeps peak memory bounded by batch_size, not dataset size,
+    at the cost of repeating the FFT filtering every epoch instead of once."""
+    def collate(batch):
+        windows = np.stack([item[0] for item in batch], axis=0)
+        labels = np.stack([item[1] for item in batch], axis=0)
+        bands = [filter_signal_by_fft(windows, lo, hi, window_length) for lo, hi in points]
+        stacked = np.stack(bands, axis=1)
+        return torch.Tensor(stacked), torch.tensor(labels, dtype=torch.uint8)
+    return collate
+
+
 def windows_for_trials(eeg_data_list, event_data_list, window_size, overlap, eeg_channel):
     """All overlapping windows for a list of trials -- no internal split.
     Reuses FAConformer's own sliding_window's per-trial window-extraction
@@ -318,20 +353,17 @@ def build_faconformer_si_loaders(train_eeg_list, train_label_list,
     valid_data = csp.transform(valid_data)
     test_data = csp.transform(test_data)
 
-    train_bands = [filter_signal_by_fft(train_data, lo, hi, args.window_length) for lo, hi in points]
-    valid_bands = [filter_signal_by_fft(valid_data, lo, hi, args.window_length) for lo, hi in points]
-    test_bands = [filter_signal_by_fft(test_data, lo, hi, args.window_length) for lo, hi in points]
+    # 8-band FFT filtering deferred to per-batch (see make_band_filter_collate) --
+    # NOT precomputed for the whole dataset here, unlike FAConformer's own
+    # get_DTU_data. See that function's docstring for why.
+    collate_fn = make_band_filter_collate(points, args.window_length)
 
-    train_data = np.stack(train_bands, axis=1)
-    valid_data = np.stack(valid_bands, axis=1)
-    test_data = np.stack(test_bands, axis=1)
-
-    train_loader = DataLoader(CustomDatasets(train_data, train_label), batch_size=args.batch_size,
-                               drop_last=True, pin_memory=True)
-    valid_loader = DataLoader(CustomDatasets(valid_data, valid_label), batch_size=args.batch_size,
-                               drop_last=True, pin_memory=True)
-    test_loader = DataLoader(CustomDatasets(test_data, test_label), batch_size=args.batch_size,
-                              drop_last=True, pin_memory=True)
+    train_loader = DataLoader(CSPWindowDataset(train_data, train_label), batch_size=args.batch_size,
+                               drop_last=True, pin_memory=True, collate_fn=collate_fn)
+    valid_loader = DataLoader(CSPWindowDataset(valid_data, valid_label), batch_size=args.batch_size,
+                               drop_last=True, pin_memory=True, collate_fn=collate_fn)
+    test_loader = DataLoader(CSPWindowDataset(test_data, test_label), batch_size=args.batch_size,
+                              drop_last=True, pin_memory=True, collate_fn=collate_fn)
     return train_loader, valid_loader, test_loader, args
 
 
