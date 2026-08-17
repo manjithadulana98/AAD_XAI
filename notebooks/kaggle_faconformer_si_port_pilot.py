@@ -13,18 +13,30 @@
 # 3-6 (ST-GCN Phases 1-2 stay closed/documented as-is -- see
 # `stgcn/outputs/phase2_gcn_only/PHASE2_REPORT.md`).
 #
-# Ports FAConformer's real model and preprocessing
-# (`external/FAConformer/models/FAConformer.py`, unmodified; CSP-then-
-# 8-band-FFT via the repo's own `get_DTU_data` ordering, already validated
-# in `kaggle_faconformer_pilot.py`/`kaggle_faconformer_sweep.py`) into this
+# Ports FAConformer's real model
+# (`external/FAConformer/models/FAConformer.py`, unmodified) into this
 # project's subject-independent, leakage-safe DTU pipeline
 # (`DTUDataset.createSICrossValidation` -- the same folds ST-GCN and
 # AADNet/VLAAI use), replacing FAConformer's own native chronological
 # 90/10 subject-dependent split.
 #
-# Exactly three things change versus the validated FAConformer pipeline;
-# everything else (model, CSP+band-filter preprocessing, `attend_mf`
-# label, hyperparameters) is unchanged:
+# **CSP dropped as of this version.** A deep-network-free diagnostic
+# (`kaggle_faconformer_csp_probe_diagnostic.py`) found that CSP fit on the
+# pooled, cross-subject SI training set produces substantially weaker
+# features than CSP fit within one subject (a trivial logistic-regression
+# probe: 62.6% train / 55.9% test on SI vs. 77.6% train / 76.7% test on
+# the single-subject case) -- a well-documented failure mode for naively
+# pooling CSP covariances across subjects with different head geometries.
+# CSP was never part of FAConformer's own paper architecture to begin
+# with (Section III-C/D describes raw channels -> FFT band decomposition
+# -> CNN-Transformer directly) -- only the repo's own undocumented
+# preprocessing addition. This version feeds the windowed raw 64-channel
+# EEG straight into the existing `filter_signal_by_fft` band-decomposition
+# step, matching the paper's actual described pipeline.
+#
+# Exactly three things change versus FAConformer's own SD pipeline;
+# everything else (model, band-filter preprocessing, `attend_mf` label,
+# hyperparameters) is unchanged:
 #
 # 1. **Data source.** Instead of FAConformer's own `sliding_window`'s
 #    internal chronological 90/10 split on ONE subject's OWN trials, each
@@ -229,7 +241,6 @@ os.chdir(faconformer_dir)  # FAConformer's own relative imports assume this
 
 import math
 from dotmap import DotMap
-from mne.decoding import CSP
 from utils.functions import filter_signal_by_fft
 from torch.utils.data import Dataset, DataLoader
 
@@ -246,20 +257,21 @@ class CustomDatasets(Dataset):
         return self.data[index], self.label[index]
 
 
-class CSPWindowDataset(Dataset):
-    """Holds only the CSP-transformed windows (one 'band' worth of data,
-    ~3GB for a large SI fold) -- NOT the 8-band-filtered representation.
-    Kept as a plain numpy array; band-filtering happens per-batch in
-    band_filter_collate, not here."""
-    def __init__(self, csp_windows, label):
-        self.csp_windows = csp_windows
+class RawWindowDataset(Dataset):
+    """Holds only the raw, windowed 64-channel EEG (one 'band' worth of
+    data, ~3GB for a large SI fold) -- NOT the 8-band-filtered
+    representation. Kept as a plain numpy array; band-filtering happens
+    per-batch in make_band_filter_collate, not here. No CSP -- see this
+    notebook's header for why it was dropped."""
+    def __init__(self, windows, label):
+        self.windows = windows
         self.label = label
 
     def __len__(self):
         return len(self.label)
 
     def __getitem__(self, index):
-        return self.csp_windows[index], self.label[index]
+        return self.windows[index], self.label[index]
 
 
 def make_band_filter_collate(points, window_length):
@@ -301,20 +313,19 @@ def build_faconformer_si_loaders(train_eeg_list, train_label_list,
                                   valid_eeg_list, valid_label_list,
                                   test_eeg_list, test_label_list, time_len):
     """SI-aware version of build_faconformer_loaders (kaggle_faconformer_pilot.py) --
-    CSP-then-8-band-FFT preprocessing unchanged; the train/valid/test SPLIT
-    is now supplied externally (SI folds) instead of being derived
-    internally from one subject's own chronological 90/10 split."""
+    the train/valid/test SPLIT is supplied externally (SI folds) instead of
+    being derived internally from one subject's own chronological 90/10
+    split. No CSP (dropped -- see this notebook's header): raw 64-channel
+    windows feed directly into the 8-band FFT decomposition, matching the
+    paper's own described pipeline (Section III-C/D) rather than the
+    repo's undocumented CSP preprocessing addition."""
     args = DotMap()
     args.fs = 64
     args.window_length = math.ceil(args.fs * time_len)
     args.overlap = 0.5
     args.batch_size = 32
     args.eeg_channel = 64
-    # See kaggle_faconformer_pilot.py / kaggle_faconformer_sweep.py for why
-    # CSP is fixed at 63 components with Ledoit-Wolf shrinkage (AADNet's
-    # self-average-referencing caps the true channel rank at 63 for every
-    # subject, deterministically).
-    args.csp_comp = 63
+    args.n_components = 64   # no CSP -- model's in_planes matches the raw channel count directly
 
     train_data, train_label = windows_for_trials(train_eeg_list, train_label_list,
                                                   args.window_length, args.overlap, args.eeg_channel)
@@ -342,27 +353,25 @@ def build_faconformer_si_loaders(train_eeg_list, train_label_list,
     points = [(math.ceil(lo / args.frequency_resolution), math.ceil(hi / args.frequency_resolution) + 1)
               for lo, hi in band_edges]
 
+    # Channel-major, matching filter_signal_by_fft's axis=1-is-time
+    # convention -- unrelated to CSP, still needed with CSP dropped.
     train_data = train_data.transpose(0, 2, 1)
     valid_data = valid_data.transpose(0, 2, 1)
     test_data = test_data.transpose(0, 2, 1)
 
-    csp = CSP(n_components=args.csp_comp, reg='ledoit_wolf', log=None, cov_est='concat',
-              transform_into='csp_space', norm_trace=True)
-    train_label_sq = np.squeeze(train_label)
-    train_data = csp.fit_transform(train_data, train_label_sq)
-    valid_data = csp.transform(valid_data)
-    test_data = csp.transform(test_data)
+    # No CSP fit/transform here -- raw 64-channel windows feed directly
+    # into the 8-band FFT decomposition below.
 
     # 8-band FFT filtering deferred to per-batch (see make_band_filter_collate) --
     # NOT precomputed for the whole dataset here, unlike FAConformer's own
     # get_DTU_data. See that function's docstring for why.
     collate_fn = make_band_filter_collate(points, args.window_length)
 
-    train_loader = DataLoader(CSPWindowDataset(train_data, train_label), batch_size=args.batch_size,
+    train_loader = DataLoader(RawWindowDataset(train_data, train_label), batch_size=args.batch_size,
                                drop_last=True, pin_memory=True, collate_fn=collate_fn)
-    valid_loader = DataLoader(CSPWindowDataset(valid_data, valid_label), batch_size=args.batch_size,
+    valid_loader = DataLoader(RawWindowDataset(valid_data, valid_label), batch_size=args.batch_size,
                                drop_last=True, pin_memory=True, collate_fn=collate_fn)
-    test_loader = DataLoader(CSPWindowDataset(test_data, test_label), batch_size=args.batch_size,
+    test_loader = DataLoader(RawWindowDataset(test_data, test_label), batch_size=args.batch_size,
                               drop_last=True, pin_memory=True, collate_fn=collate_fn)
     return train_loader, valid_loader, test_loader, args
 
@@ -441,7 +450,7 @@ def evaluate(model, loader):
 
 
 def train_one_fold(fold_idx, train_loader, valid_loader, test_loader, data_args):
-    model, optimizer = make_model_and_optimizer(data_args.csp_comp, data_args.window_length)
+    model, optimizer = make_model_and_optimizer(data_args.n_components, data_args.window_length)
 
     if fold_idx == 0:
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
