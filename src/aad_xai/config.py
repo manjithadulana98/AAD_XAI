@@ -14,8 +14,9 @@ class PreprocessConfig:
 
 @dataclass(frozen=True)
 class WindowConfig:
-    lengths_s: Sequence[float] = (1.0, 5.0, 10.0, 60.0)
+    lengths_s: Sequence[float] = (1.0, 2.0, 5.0, 10.0)
     overlap_s: float = 0.0  # overlap allowed *within split only*; never across split boundaries
+    primary_s: float = 5.0  # primary explainability decision window
 
 
 @dataclass(frozen=True)

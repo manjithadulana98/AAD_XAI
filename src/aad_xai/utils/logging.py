@@ -38,3 +38,9 @@ def log_run_metadata(run_dir: Path, **kwargs: Any) -> None:
     }
     save_json(run_dir / "meta.json", meta)
 
+
+def experiment_id(dataset: str, model: str, cv_strategy: str, window_s: float, seed: int) -> str:
+    """Build a reproducibility experiment ID, e.g. ``DTU_TRF_LOSO_W5_SEED42``."""
+    tag = f"{window_s:g}".replace(".", "p")
+    return f"{dataset.upper()}_{model.upper()}_{cv_strategy.upper()}_W{tag}_SEED{seed}"
+

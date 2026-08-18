@@ -19,7 +19,7 @@ import hashlib
 import json
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 from sklearn.linear_model import Ridge
@@ -34,6 +34,7 @@ from .data.base import Trial
 from .data.kul_dataset import KULeuvenDataset
 from .data.cv_splits import (
     CV_STRATEGIES,
+    CVFold,
     _content_group,
 )
 from .data.torch_dataset import WindowedEEGDataset, WindowedEEGAudioDataset
@@ -206,6 +207,7 @@ def _train_trf_fold(
     tmin_s: float = 0.0,
     tmax_s: float = 0.5,
     alpha_metric: str = "corr",
+    train_seed: int = 42,
 ) -> dict:
     """Train and evaluate TRF on one CV fold."""
     tr = [t for t in train_trials if t.audio_a is not None and t.audio_b is not None]
@@ -223,7 +225,7 @@ def _train_trf_fold(
     decoder = TRFDecoder(tmin_s=float(tmin_s), tmax_s=float(tmax_s), alpha=100.0)
 
     # --- Memory-safe training: sample many short segments across training trials ---
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(train_seed)
     sfreq = float(tr[0].sfreq)
     seg_len = int(round(float(input_window_s) * sfreq))
     if seg_len <= 0:
@@ -445,6 +447,8 @@ def _train_trf_fold(
                     "ref_outcome": _label_to_ab(true_label),
                     "pred_outcome": _label_to_ab(int(pred_label)),
                     "p_class1": float(p_class1),
+                    "corr_a": float(corr_a),
+                    "corr_b": float(corr_b),
                 }
             )
 
@@ -486,6 +490,8 @@ def _train_trf_fold(
                         "ref_outcome": _label_to_ab(true_label),
                         "pred_outcome": _label_to_ab(int(pred_label)),
                         "p_class1": float(p_class1),
+                        "corr_a": float(corr_a),
+                        "corr_b": float(corr_b),
                     }
                 )
 
@@ -536,7 +542,10 @@ def _label_to_ab(label: int) -> str:
 def _write_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        # extrasaction="ignore": row dicts may carry extra keys (e.g. corr_a/corr_b,
+        # added for the standardized evaluation schema) that this legacy writer's
+        # fixed, narrower `fieldnames` doesn't include -- ignore rather than raise.
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -772,8 +781,16 @@ def run_experiment(
     trf_max_train_seconds: float = 1200.0,
     trf_tmin_s: float = 0.0,
     trf_tmax_s: float = 0.5,
+    on_fold_result: Optional[Callable[[CVFold, dict], None]] = None,
 ) -> list[dict]:
-    """Run all folds for one (cv_strategy, model) combination."""
+    """Run all folds for one (cv_strategy, model) combination.
+
+    `on_fold_result`, if given, is called once per fold with `(fold, res)`
+    immediately after artifacts are written but *before* `res` is stripped of
+    its window/trial-level detail for the (deliberately small) per-fold JSON
+    summary -- lets callers (e.g. the DTU standardized-record pipeline)
+    capture window-level rows without changing what gets persisted here.
+    """
     if train_window_s is None:
         train_window_s = window_s
     if train_window_s <= 0 or window_s <= 0:
@@ -869,6 +886,7 @@ def run_experiment(
                 tmin_s=float(trf_tmin_s),
                 tmax_s=float(trf_tmax_s),
                 alpha_metric=str(trf_alpha_metric),
+                train_seed=int(seed),
             )
             artifact_paths = {}
             if write_artifacts:
@@ -964,6 +982,8 @@ def run_experiment(
         res["fold_id"] = fold.fold_id
         res["meta"] = fold.meta
         res["artifacts"] = artifact_paths
+        if on_fold_result is not None:
+            on_fold_result(fold, res)
         for key in ["y_true", "y_pred", "p_class1", "trial_rows", "window_rows", "base_window_rows"]:
             if key in res:
                 del res[key]

@@ -482,6 +482,59 @@ def strict_subject_independent_story_disjoint(
 
 
 # ======================================================================== #
+#  Defense-in-depth integrity check for LOSO folds
+# ======================================================================== #
+
+def assert_loso_fold_integrity(trials: Sequence[Trial], fold: CVFold) -> None:
+    """Re-check (machine-checkably, not just by construction) the invariants
+    a LOSO fold must satisfy: no subject overlap between train/val/test, the
+    validation subject is never the test subject, and no trial is shared
+    across splits (stimulus/trial leakage).
+
+    Dataset-agnostic: only relies on `Trial.subject_id`/`Trial.trial_id`, so
+    it works for any dataset using the ``"loso"`` strategy, not just DTU.
+    Raises ``AssertionError`` naming the offending fold on any violation.
+    """
+    def _subjects(idx: list[int]) -> set[str]:
+        return {trials[i].subject_id for i in idx}
+
+    def _trial_ids(idx: list[int]) -> set[str]:
+        return {trials[i].trial_id for i in idx}
+
+    train_subj, val_subj, test_subj = (
+        _subjects(fold.train_idx), _subjects(fold.val_idx), _subjects(fold.test_idx)
+    )
+
+    if not train_subj.isdisjoint(test_subj):
+        raise AssertionError(
+            f"[{fold.fold_id}] train/test subject overlap: {train_subj & test_subj}"
+        )
+    if not train_subj.isdisjoint(val_subj):
+        raise AssertionError(
+            f"[{fold.fold_id}] train/val subject overlap: {train_subj & val_subj}"
+        )
+    if not val_subj.isdisjoint(test_subj):
+        raise AssertionError(
+            f"[{fold.fold_id}] val subject == test subject: {val_subj & test_subj}"
+        )
+
+    train_trial, val_trial, test_trial = (
+        _trial_ids(fold.train_idx), _trial_ids(fold.val_idx), _trial_ids(fold.test_idx)
+    )
+    for name_a, set_a, name_b, set_b in [
+        ("train", train_trial, "val", val_trial),
+        ("train", train_trial, "test", test_trial),
+        ("val", val_trial, "test", test_trial),
+    ]:
+        overlap = set_a & set_b
+        if overlap:
+            raise AssertionError(
+                f"[{fold.fold_id}] {name_a}/{name_b} trial_id overlap "
+                f"(stimulus/trial leakage): {overlap}"
+            )
+
+
+# ======================================================================== #
 #  Registry
 # ======================================================================== #
 

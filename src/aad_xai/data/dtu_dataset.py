@@ -5,10 +5,18 @@ import numpy as np
 import scipy.io
 from .base import BaseDataset, Trial
 from .kul_dataset import _load_wav_envelope
+from ..config import PreprocessConfig
 
 # Number of EEG channels to keep (first N columns of the raw matrix).
 # The DTU files have 73 columns: 64 EEG + 8 EXG + 1 Status channel.
 _N_EEG_CHANNELS = 64
+
+
+def _match_length(env: np.ndarray, target_len: int) -> np.ndarray:
+    """Truncate or zero-pad a 1D envelope to exactly *target_len* samples."""
+    if len(env) >= target_len:
+        return env[:target_len]
+    return np.pad(env, (0, target_len - len(env))).astype(np.float32, copy=False)
 
 
 class DTUDataset(BaseDataset):
@@ -52,6 +60,17 @@ class DTUDataset(BaseDataset):
         both male and female audio are available for a trial.
     n_eeg_channels : int
         How many leading EEG channels to keep (default 64).
+    preprocess : PreprocessConfig | None
+        EEG preprocessing settings (bandpass + resample + reref), applied via
+        the same :func:`aad_xai.data.preprocessing.preprocess_eeg` primitive
+        used by :class:`KULeuvenDataset`. When set, the audio envelope is
+        extracted at the *same* output sample rate and band as the EEG, so
+        ``Trial.eeg``/``Trial.audio_a``/``Trial.audio_b`` stay index-aligned.
+        *None* (default) preserves the historical behaviour: EEG at its
+        native rate (~512 Hz) but the envelope hardcoded to 64 Hz/1-8 Hz —
+        kept only for backward compatibility with existing callers that
+        don't pass this argument; callers doing anything with ``audio_a``/
+        ``audio_b`` (e.g. TRF training) should always pass a ``preprocess``.
     """
 
     def __init__(
@@ -60,6 +79,7 @@ class DTUDataset(BaseDataset):
         audio_dir: Optional[str | Path] = None,
         load_audio: bool = True,
         n_eeg_channels: int = _N_EEG_CHANNELS,
+        preprocess: Optional[PreprocessConfig] = None,
     ):
         self.root = Path(root)
         if audio_dir is None:
@@ -70,6 +90,7 @@ class DTUDataset(BaseDataset):
             self.audio_dir = None
         self.load_audio = load_audio
         self.n_eeg_channels = n_eeg_channels
+        self.preprocess = preprocess
 
     def trials(self) -> Iterator[Trial]:
         eeg_dir = self.root / "eeg_new"
@@ -81,7 +102,10 @@ class DTUDataset(BaseDataset):
 
         for mat_path in sorted(eeg_dir.glob("S*.mat")):
             yield from self._parse_subject_file(
-                mat_path, self.n_eeg_channels, self.audio_dir if self.load_audio else None
+                mat_path,
+                self.n_eeg_channels,
+                self.audio_dir if self.load_audio else None,
+                self.preprocess,
             )
 
     # ------------------------------------------------------------------
@@ -90,6 +114,7 @@ class DTUDataset(BaseDataset):
         mat_path: Path,
         n_eeg_channels: int,
         audio_dir: Optional[Path],
+        preprocess: Optional[PreprocessConfig] = None,
     ) -> Iterator[Trial]:
         subject_id = mat_path.stem  # e.g. "S1"
 
@@ -121,6 +146,21 @@ class DTUDataset(BaseDataset):
             eeg_segment = eeg_cont[onset:offset, :]  # (n_times, n_channels)
             eeg_segment = eeg_segment.T               # (n_channels, n_times)
 
+            # ── Preprocess EEG (optional) ───────────────────────────────
+            # Mirrors KULeuvenDataset._parse_mat: when a PreprocessConfig is
+            # given, resample/band-limit EEG and extract the envelope at the
+            # SAME output rate/band so the two arrays stay index-aligned.
+            # Without this, EEG stays at its native rate (~512 Hz) while the
+            # envelope below is pinned to 64 Hz -- any code that slices both
+            # by the same sample indices (e.g. TRF fold training) silently
+            # misaligns them.
+            if preprocess is not None:
+                from .preprocessing import preprocess_eeg
+                eeg_segment, sfreq_out = preprocess_eeg(eeg_segment, sfreq, preprocess)
+            else:
+                sfreq_out = sfreq
+                eeg_segment = eeg_segment.astype(np.float32, copy=False)
+
             # Label: 0 = attend male, 1 = attend female
             attend_mf = int(expinfo[i]["attend_mf"][0, 0])
             label = attend_mf - 1  # 1→0, 2→1
@@ -147,13 +187,33 @@ class DTUDataset(BaseDataset):
                     wav_a = audio_dir / wavfile_male
                     wav_b = audio_dir / wavfile_female
                     if wav_a.exists() and wav_b.exists():
-                        audio_sr = 64
-                        audio_a = _load_wav_envelope(wav_a, target_sfreq=float(audio_sr))
-                        audio_b = _load_wav_envelope(wav_b, target_sfreq=float(audio_sr))
+                        if preprocess is not None:
+                            audio_sr = int(round(sfreq_out))
+                            low_hz, high_hz = preprocess.bandpass_hz
+                        else:
+                            audio_sr = 64
+                            low_hz, high_hz = 1.0, 8.0
+                        audio_a = _load_wav_envelope(
+                            wav_a, target_sfreq=float(audio_sr), low_hz=low_hz, high_hz=high_hz
+                        )
+                        audio_b = _load_wav_envelope(
+                            wav_b, target_sfreq=float(audio_sr), low_hz=low_hz, high_hz=high_hz
+                        )
+                        if preprocess is not None:
+                            # Independent resampling of EEG (from event-sample counts)
+                            # and audio (from WAV duration) can differ by a handful of
+                            # samples even at a matched rate -- truncate/pad to the EEG
+                            # length so downstream index-based slicing never runs past
+                            # the shorter array (mirrors KULeuvenDataset._get_envelope).
+                            # Scoped to preprocess-is-not-None so the historical
+                            # preprocess=None path stays byte-for-byte unchanged.
+                            n_times = eeg_segment.shape[1]
+                            audio_a = _match_length(audio_a, n_times)
+                            audio_b = _match_length(audio_b, n_times)
 
             yield Trial(
                 eeg=eeg_segment,
-                sfreq=sfreq,
+                sfreq=sfreq_out,
                 label=label,
                 subject_id=subject_id,
                 trial_id=trial_id,
