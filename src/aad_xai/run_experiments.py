@@ -532,6 +532,16 @@ def _train_trf_fold(
         "base_window_rows": base_window_rows if float(decision_window_s) > float(input_window_s) else None,
         "window_rows": decision_window_rows,
         "trial_rows": trial_rows,
+        # Fitted TRF weights, for downstream Haufe-transform explainability
+        # (trf_explain.py) -- not persisted anywhere else in this repo, so
+        # every field the Haufe identity needs (not just coef_) is carried
+        # through here. Stripped from the small per-fold JSON summary via
+        # the deletion list in run_experiment(), same treatment as
+        # window_rows/trial_rows below.
+        "trf_coef": decoder.model.coef_.copy(),
+        "trf_lags": decoder.lags_,
+        "trf_x_mean": decoder._X_mean,
+        "trf_x_std": decoder._X_std,
     }
 
 
@@ -984,7 +994,10 @@ def run_experiment(
         res["artifacts"] = artifact_paths
         if on_fold_result is not None:
             on_fold_result(fold, res)
-        for key in ["y_true", "y_pred", "p_class1", "trial_rows", "window_rows", "base_window_rows"]:
+        for key in [
+            "y_true", "y_pred", "p_class1", "trial_rows", "window_rows", "base_window_rows",
+            "trf_coef", "trf_lags", "trf_x_mean", "trf_x_std",
+        ]:
             if key in res:
                 del res[key]
         results.append(res)

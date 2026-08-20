@@ -58,5 +58,16 @@ _try_import("composite_stability", [
     "safe_spearman",
     "leave_one_out_ranking_reliability",
 ])
+_try_import("trf_explain", [
+    "load_trf_decoder",
+    "haufe_pattern_for_fold",
+    "window_level_importance",
+    "window_level_combined_table",
+    "subject_level_stats",
+    "roi_level_stats",
+    "sanity_check_lag_cascade",
+    "faithfulness_curves",
+    "run_trf_explain",
+])
 
 del _try_import

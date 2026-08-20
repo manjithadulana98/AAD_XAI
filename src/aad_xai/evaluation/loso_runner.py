@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 
 from ..config import PreprocessConfig
@@ -101,6 +102,7 @@ def run_dtu_loso_trf_on_trials(
         stale_json.unlink()
 
     window_records: list[PredictionRecord] = []
+    weights_dir = run_dir / "trf_weights"
 
     def _collect(_fold: CVFold, res: dict) -> None:
         window_rows = res.get("window_rows") or []
@@ -109,6 +111,26 @@ def run_dtu_loso_trf_on_trials(
                 window_rows, dataset="dtu", model="trf", window_seconds=window_s, seed=seed,
             )
         )
+
+        # Persist the fitted TRF's weights for downstream Haufe-transform
+        # explainability (trf_explain.py). Every fitted TRFDecoder in this
+        # repo is otherwise fit-and-discarded in-process -- this is the
+        # first place any TRF weights survive past a single function call.
+        # Named by the fold's TEST subject (meta["test_subject"], not
+        # val_idx -- LOSO's val_idx is a *different* subject held out only
+        # for early-stopping/model-selection, not the subject this fold's
+        # accuracy is actually reported against).
+        coef = res.get("trf_coef")
+        if coef is not None:
+            weights_dir.mkdir(parents=True, exist_ok=True)
+            held_out_subject = _fold.meta["test_subject"]
+            np.savez(
+                weights_dir / f"{held_out_subject}.npz",
+                coef=coef,
+                lags=res["trf_lags"],
+                x_mean=res["trf_x_mean"],
+                x_std=res["trf_x_std"],
+            )
 
     fold_results = run_experiment(
         trials=trials,
