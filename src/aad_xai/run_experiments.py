@@ -1028,8 +1028,16 @@ def run_experiment(
 # ======================================================================== #
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Run KULeuven AAD experiments with 4 CV strategies.")
+    ap = argparse.ArgumentParser(description="Run AAD experiments with several CV strategies.")
     ap.add_argument("--data-dir", type=str, default="data/KULeuven")
+    ap.add_argument(
+        "--dataset", type=str, default="kul", choices=["kul", "dtu"],
+        help=(
+            "Which dataset --data-dir points at. 'dtu' only supports dataset-agnostic "
+            "CV strategies (loso, within_subject_5fold) -- the others parse KUL-specific "
+            "story/condition metadata that DTU's group_id format doesn't have."
+        ),
+    )
     ap.add_argument(
         "--protocol",
         type=str,
@@ -1153,9 +1161,22 @@ def main() -> None:
     cv_names = list(CV_STRATEGIES.keys()) if args.cv == "all" else [args.cv]
     model_names = ["trf", "cnn", "stgcn", "aadnet_ext", "sgat"] if args.model == "all" else [args.model]
 
+    _DTU_SAFE_CV_STRATEGIES = {"loso", "within_subject_5fold"}
+    if args.dataset == "dtu":
+        incompatible = sorted(set(cv_names) - _DTU_SAFE_CV_STRATEGIES)
+        if incompatible:
+            raise ValueError(
+                f"--dataset dtu only supports {sorted(_DTU_SAFE_CV_STRATEGIES)} -- "
+                f"{incompatible} parse KUL-specific story/condition metadata "
+                "(group_id format differs for DTU) and would silently misgroup folds. "
+                "Pass an explicit --cv loso (or --cv within_subject_5fold), not --cv all."
+            )
+        if args.envelope is not None or args.include_experiments is not None:
+            raise ValueError("--envelope/--include-experiments are KUL-only and cannot be used with --dataset dtu.")
+
     # -- Load data once --
     print("====================================================")
-    print("  KULeuven AAD Experiments")
+    print(f"  {args.dataset.upper()} AAD Experiments")
     print("====================================================")
     print(f"  Loading data from {args.data_dir} ...")
 
@@ -1180,21 +1201,26 @@ def main() -> None:
             reref=preprocess.reref,
         )
 
-    envelope_method = args.envelope
-    if envelope_method is None:
-        envelope_method = "hilbert"
+    if args.dataset == "kul":
+        envelope_method = args.envelope
+        if envelope_method is None:
+            envelope_method = "hilbert"
 
-    include_experiments = None
-    if args.include_experiments:
-        include_experiments = [int(x.strip()) for x in args.include_experiments.split(",") if x.strip()]
+        include_experiments = None
+        if args.include_experiments:
+            include_experiments = [int(x.strip()) for x in args.include_experiments.split(",") if x.strip()]
 
-    ds = KULeuvenDataset(
-        root=args.data_dir,
-        preprocess=preprocess,
-        load_audio=need_audio,
-        envelope_method=envelope_method,
-        include_experiments=include_experiments,
-    )
+        ds = KULeuvenDataset(
+            root=args.data_dir,
+            preprocess=preprocess,
+            load_audio=need_audio,
+            envelope_method=envelope_method,
+            include_experiments=include_experiments,
+        )
+    else:  # dtu
+        from .data.dtu_dataset import DTUDataset
+        ds = DTUDataset(root=args.data_dir, load_audio=need_audio, preprocess=preprocess)
+
     t0 = time.time()
     trials = list(ds.trials())
     load_time = time.time() - t0
