@@ -51,7 +51,11 @@ if not os.path.exists(REPO_DIR):
         check=True,
     )
 else:
-    print(f"Repository already cloned at {REPO_DIR}")
+    # A kernel restart (as opposed to a fresh session) can leave REPO_DIR
+    # sitting on disk from a previous run -- pull instead of silently
+    # training against a stale checkout.
+    print(f"Repository already present at {REPO_DIR} -- pulling latest.")
+    subprocess.run(["git", "-C", REPO_DIR, "pull", "--ff-only"], check=True)
 
 os.chdir(REPO_DIR)
 
