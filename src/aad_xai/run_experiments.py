@@ -41,10 +41,15 @@ from .data.torch_dataset import WindowedEEGDataset, WindowedEEGAudioDataset
 from .models.aadnet import AADNet
 from .models.aadnet_external import ExternalAADNet
 from .models.stgcn import STGCN
+from .models.sgat import StimulusGAT
 from .models.trf_baseline import TRFDecoder, _safe_corrcoef, lag_matrix
 from .utils.seed import seed_everything
 from .utils.logging import save_json
 from .utils.metrics import binary_confusion_matrix
+
+# Deep models that take (eeg, env) instead of just (eeg,) -- both the EEG
+# window and the 2-candidate speech envelope are required inputs.
+_TWO_STREAM_MODELS = {"aadnet_ext", "sgat"}
 
 
 def _parse_csv_floats(s: str) -> list[float]:
@@ -55,13 +60,17 @@ def _parse_csv_floats(s: str) -> list[float]:
 #  Model helpers
 # ======================================================================== #
 
-def _build_model(name: str, n_ch: int, window_samples: int, device: torch.device) -> nn.Module:
+def _build_model(
+    name: str, n_ch: int, window_samples: int, device: torch.device, sfreq: float = 64.0,
+) -> nn.Module:
     if name == "cnn":
         return AADNet(n_channels=n_ch).to(device)
     elif name == "stgcn":
         return STGCN(n_channels=n_ch).to(device)
     elif name == "aadnet_ext":
         return ExternalAADNet(n_channels=n_ch, window_samples=window_samples).to(device)
+    elif name == "sgat":
+        return StimulusGAT(n_channels=n_ch, sfreq=sfreq).to(device)
     raise ValueError(name)
 
 
@@ -78,7 +87,7 @@ def _eval_model(
     p1_all: list[float] = []
     with torch.no_grad():
         for batch in loader:
-            if model_name == "aadnet_ext":
+            if model_name in _TWO_STREAM_MODELS:
                 xb, envb, yb = batch
                 xb = xb.to(device)
                 envb = envb.to(device)
@@ -115,12 +124,13 @@ def _train_deep_fold(
     lr: float = 1e-3,
     batch_size: int = 64,
     weight_decay: float = 1e-4,
+    sfreq: float = 64.0,
 ) -> dict:
     """Train a deep model on one CV fold; return results dict."""
     seed_everything(seed)
     n_ch = ds_train[0][0].shape[0]
     window_samples = ds_train[0][0].shape[1]
-    model = _build_model(model_name, n_ch, window_samples, device)
+    model = _build_model(model_name, n_ch, window_samples, device, sfreq=sfreq)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_fn = nn.CrossEntropyLoss()
 
@@ -133,7 +143,7 @@ def _train_deep_fold(
     for ep in range(1, epochs + 1):
         model.train()
         for batch in dl_tr:
-            if model_name == "aadnet_ext":
+            if model_name in _TWO_STREAM_MODELS:
                 xb, envb, yb = batch
                 xb = xb.to(device)
                 envb = envb.to(device)
@@ -144,7 +154,7 @@ def _train_deep_fold(
                 envb = None
                 yb = torch.as_tensor(yb, dtype=torch.long, device=device)
             opt.zero_grad(set_to_none=True)
-            logits = model(xb, envb) if model_name == "aadnet_ext" else model(xb)
+            logits = model(xb, envb) if model_name in _TWO_STREAM_MODELS else model(xb)
             loss = loss_fn(logits, yb)
             loss.backward()
             opt.step()
@@ -154,7 +164,7 @@ def _train_deep_fold(
         vloss, vtot = 0.0, 0
         with torch.no_grad():
             for batch in dl_val:
-                if model_name == "aadnet_ext":
+                if model_name in _TWO_STREAM_MODELS:
                     xb, envb, yb = batch
                     xb = xb.to(device)
                     envb = envb.to(device)
@@ -914,7 +924,7 @@ def run_experiment(
                     trial_rows=res.get("trial_rows", []),
                 )
         else:
-            ds_cls = WindowedEEGAudioDataset if model_name == "aadnet_ext" else WindowedEEGDataset
+            ds_cls = WindowedEEGAudioDataset if model_name in _TWO_STREAM_MODELS else WindowedEEGDataset
             ds_tr = ds_cls(train_trials, window_s=float(train_window_s), overlap_s=overlap_s)
             ds_val = ds_cls(val_trials, window_s=float(train_window_s), overlap_s=overlap_s)
             ds_te = ds_cls(test_trials, window_s=float(train_window_s), overlap_s=overlap_s)
@@ -932,6 +942,7 @@ def run_experiment(
                 lr=lr,
                 batch_size=batch_size,
                 weight_decay=weight_decay,
+                sfreq=sfreq,
             )
 
             y_true = [int(v) for v in res.pop("y_true", [])]
@@ -1036,7 +1047,7 @@ def main() -> None:
         default="all",
         choices=["all"] + sorted(list(CV_STRATEGIES.keys())),
     )
-    ap.add_argument("--model", type=str, default="all", choices=["all", "trf", "cnn", "stgcn", "aadnet_ext"])
+    ap.add_argument("--model", type=str, default="all", choices=["all", "trf", "cnn", "stgcn", "aadnet_ext", "sgat"])
     ap.add_argument("--window", type=float, default=2.0, help="Decision window (seconds).")
     ap.add_argument(
         "--train-window",
@@ -1140,7 +1151,7 @@ def main() -> None:
             args.trf_tmax = 0.25
 
     cv_names = list(CV_STRATEGIES.keys()) if args.cv == "all" else [args.cv]
-    model_names = ["trf", "cnn", "stgcn", "aadnet_ext"] if args.model == "all" else [args.model]
+    model_names = ["trf", "cnn", "stgcn", "aadnet_ext", "sgat"] if args.model == "all" else [args.model]
 
     # -- Load data once --
     print("====================================================")
@@ -1149,7 +1160,7 @@ def main() -> None:
     print(f"  Loading data from {args.data_dir} ...")
 
     # Load with audio for TRF, and separately without if needed
-    need_audio = any(m in {"trf", "aadnet_ext"} for m in model_names)
+    need_audio = any(m in ({"trf"} | _TWO_STREAM_MODELS) for m in model_names)
 
     # Preprocess overrides
     preprocess = PreprocessConfig()

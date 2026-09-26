@@ -29,7 +29,7 @@ class SplitConfig:
 
 @dataclass(frozen=True)
 class TrainConfig:
-    model: Literal["trf", "cnn", "stgcn", "aadnet_ext"] = "cnn"
+    model: Literal["trf", "cnn", "stgcn", "aadnet_ext", "sgat"] = "cnn"
     batch_size: int = 64
     lr: float = 1e-3
     weight_decay: float = 1e-4

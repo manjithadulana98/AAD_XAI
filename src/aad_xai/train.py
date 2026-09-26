@@ -40,10 +40,15 @@ from .data.synthetic_dataset import SyntheticDataset
 from .models.aadnet import AADNet
 from .models.aadnet_external import ExternalAADNet
 from .models.stgcn import STGCN
+from .models.sgat import StimulusGAT
 from .models.trf_baseline import TRFDecoder
 from .utils.seed import seed_everything
 from .utils.metrics import accuracy
 from .utils.logging import save_json, get_run_dir, log_run_metadata
+
+# Deep models that take (eeg, env) instead of just (eeg,) -- both the EEG
+# window and the 2-candidate speech envelope are required inputs.
+_TWO_STREAM_MODELS = {"aadnet_ext", "sgat"}
 
 
 # ======================================================================== #
@@ -57,7 +62,7 @@ def _load_dataset(cfg: RunConfig) -> BaseDataset:
     elif cfg.dataset == "kul":
         from .data.kul_dataset import KULeuvenDataset
         # TRF needs envelopes; deep models only use EEG
-        load_audio = cfg.train.model in {"trf", "aadnet_ext"}
+        load_audio = cfg.train.model in ({"trf"} | _TWO_STREAM_MODELS)
         return KULeuvenDataset(
             root=cfg.dataset_root,
             preprocess=cfg.preprocess,
@@ -65,7 +70,11 @@ def _load_dataset(cfg: RunConfig) -> BaseDataset:
         )
     elif cfg.dataset == "dtu":
         from .data.dtu_dataset import DTUDataset
-        return DTUDataset(root=cfg.dataset_root)
+        # Without `preprocess`, DTUDataset keeps EEG at its native rate while
+        # hardcoding the envelope to 64Hz/1-8Hz -- misaligning eeg/audio_a/
+        # audio_b for any model that consumes both (trf, aadnet_ext, sgat).
+        load_audio = cfg.train.model in ({"trf"} | _TWO_STREAM_MODELS)
+        return DTUDataset(root=cfg.dataset_root, load_audio=load_audio, preprocess=cfg.preprocess)
     else:
         raise ValueError(f"Unknown dataset: {cfg.dataset}")
 
@@ -104,7 +113,7 @@ def _prepare_data(
 
     overlap_s = cfg.window.overlap_s
 
-    ds_cls = WindowedEEGAudioDataset if cfg.train.model == "aadnet_ext" else WindowedEEGDataset
+    ds_cls = WindowedEEGAudioDataset if cfg.train.model in _TWO_STREAM_MODELS else WindowedEEGDataset
     ds_train = ds_cls(trials_train, window_s=window_s, overlap_s=overlap_s)
     ds_val = ds_cls(trials_val, window_s=window_s, overlap_s=0.0)
     ds_test = ds_cls(trials_test, window_s=window_s, overlap_s=0.0)
@@ -218,13 +227,17 @@ def train_trf(
 #  Deep model training loop
 # ======================================================================== #
 
-def _build_model(model_name: str, n_channels: int, device: torch.device, window_samples: int) -> nn.Module:
+def _build_model(
+    model_name: str, n_channels: int, device: torch.device, window_samples: int, sfreq: float = 64.0,
+) -> nn.Module:
     if model_name == "cnn":
         return AADNet(n_channels=n_channels).to(device)
     elif model_name == "stgcn":
         return STGCN(n_channels=n_channels).to(device)
     elif model_name == "aadnet_ext":
         return ExternalAADNet(n_channels=n_channels, window_samples=window_samples).to(device)
+    elif model_name == "sgat":
+        return StimulusGAT(n_channels=n_channels, sfreq=sfreq).to(device)
     else:
         raise ValueError(f"Unknown deep model: {model_name}")
 
@@ -235,7 +248,7 @@ def _eval_epoch(model: nn.Module, loader: DataLoader, loss_fn: nn.Module, device
     total_loss, correct, total = 0.0, 0, 0
     with torch.no_grad():
         for batch in loader:
-            if model_name == "aadnet_ext":
+            if model_name in _TWO_STREAM_MODELS:
                 xb, envb, yb = batch
                 xb = xb.to(device)
                 envb = envb.to(device)
@@ -267,7 +280,7 @@ def train_deep(
 
     n_channels = ds_train[0][0].shape[0]
     window_samples = ds_train[0][0].shape[1]
-    model = _build_model(cfg.train.model, n_channels, device, window_samples)
+    model = _build_model(cfg.train.model, n_channels, device, window_samples, sfreq=cfg.preprocess.sfreq_out)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
     loss_fn = nn.CrossEntropyLoss()
 
@@ -285,7 +298,7 @@ def train_deep(
         running_loss, running_correct, running_total = 0.0, 0, 0
         pbar = tqdm(dl_train, desc=f"  [seed={seed}] epoch {epoch}/{cfg.train.epochs}", leave=False)
         for batch in pbar:
-            if cfg.train.model == "aadnet_ext":
+            if cfg.train.model in _TWO_STREAM_MODELS:
                 xb, envb, yb = batch
                 xb = xb.to(device)
                 envb = envb.to(device)
@@ -296,7 +309,7 @@ def train_deep(
                 envb = None
                 yb = torch.as_tensor(yb, dtype=torch.long, device=device)
             opt.zero_grad(set_to_none=True)
-            logits = model(xb, envb) if cfg.train.model == "aadnet_ext" else model(xb)
+            logits = model(xb, envb) if cfg.train.model in _TWO_STREAM_MODELS else model(xb)
             loss = loss_fn(logits, yb)
             loss.backward()
             opt.step()
@@ -348,7 +361,7 @@ def _parse_args() -> argparse.Namespace:
                     help="Dataset name (overrides --synthetic).")
     ap.add_argument("--data-dir", type=str, default=None,
                     help="Path to dataset root (e.g. data/KULeuven).")
-    ap.add_argument("--model", type=str, default="cnn", choices=["trf", "cnn", "stgcn", "aadnet_ext"])
+    ap.add_argument("--model", type=str, default="cnn", choices=["trf", "cnn", "stgcn", "aadnet_ext", "sgat"])
     ap.add_argument("--window", type=float, default=1.0, help="Decision window length in seconds.")
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--seeds", type=int, default=3, help="Number of random seeds.")
