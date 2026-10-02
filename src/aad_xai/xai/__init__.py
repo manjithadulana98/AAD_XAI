@@ -24,7 +24,7 @@ def _try_import(module_name, names):
 
 _try_import("integrated_gradients", ["ig_attribution"])
 _try_import("faithfulness", ["deletion_curve", "insertion_curve"])
-_try_import("perturbations", ["band_limited_attenuation", "suppress_lag_range", "remove_channel_group"])
+_try_import("perturbations", ["band_limited_attenuation", "suppress_lag_range", "remove_channel_group", "permute_channel_group"])
 _try_import("probes", ["linear_probe_accuracy", "probe_all_layers"])
 _try_import("sanity_checks", ["randomize_parameters", "cascading_randomization"])
 _try_import("gradcam", ["gradcam_attribution", "gradcam_all_blocks", "gradcam_temporal_heatmap"])
@@ -57,7 +57,9 @@ _try_import("composite_stability", [
     "cross_validate_selection",
     "safe_spearman",
     "leave_one_out_ranking_reliability",
+    "sign_flip_p_value",
 ])
+_try_import("frequency_bands", ["BANDS", "band_filtered_component", "ablate_band"])
 _try_import("trf_explain", [
     "load_trf_decoder",
     "haufe_pattern_for_fold",
@@ -68,6 +70,17 @@ _try_import("trf_explain", [
     "sanity_check_lag_cascade",
     "faithfulness_curves",
     "run_trf_explain",
+])
+_try_import("sgat_explain", [
+    "channel_occlusion_importance",
+    "channel_permutation_importance",
+    "extract_attention",
+    "summarize_attention",
+    "channel_band_contribution",
+    "faithfulness_from_channel_ranking",
+    "faithfulness_comparison",
+    "sanity_check_cascading_randomization",
+    "run_sgat_explain",
 ])
 
 del _try_import

@@ -166,6 +166,27 @@ def safe_spearman(a, b):
     return r, p
 
 
+def sign_flip_p_value(values, n_perm: int = 5000, seed: int = 42) -> float:
+    """Two-sided sign-flip permutation p-value for mean != 0.
+
+    Appropriate for values that are NOT independent samples (e.g. windows
+    drawn from the same trial) -- use wilcoxon_p instead when each value
+    genuinely is an independent sample (e.g. one value per subject).
+    Consolidates the two near-identical inline copies this repo had
+    accumulated (scripts/run_focused_xai.py's module-level
+    sign_flip_p_value, and aad_xai.xai.trf_explain's module-private
+    _sign_flip_p_value) -- this is now the one shared version, following
+    the same consolidation precedent as safe_spearman above."""
+    values = np.asarray(values)
+    rng = np.random.RandomState(seed)
+    obs = abs(values.mean())
+    null = np.empty(n_perm)
+    for i in range(n_perm):
+        signs = rng.choice([-1, 1], size=len(values))
+        null[i] = abs((values * signs).mean())
+    return float((np.sum(null >= obs) + 1) / (n_perm + 1))
+
+
 def leave_one_out_ranking_reliability(mat, n_boot: int = 2000, seed: int = 42):
     """Phase 4: held-out-subject channel-ranking validation.
 

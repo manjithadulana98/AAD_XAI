@@ -6,9 +6,10 @@ from .vlaai_pytorch import VLAAIPyTorch
 from .vlaai_decision import AADDecisionWrapper, AADDecisionEEGOnly
 from .trf_decision import TRFDecisionWrapper
 from .sgat import StimulusGAT
+from .sgat_decision import StimulusGATDecisionWrapper
 
 __all__ = [
     "AADNet", "STGCN", "TRFDecoder", "TRFDecisionWrapper",
     "VLAAIPyTorch", "AADDecisionWrapper", "AADDecisionEEGOnly",
-    "StimulusGAT",
+    "StimulusGAT", "StimulusGATDecisionWrapper",
 ]
