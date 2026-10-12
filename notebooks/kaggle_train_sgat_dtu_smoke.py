@@ -203,10 +203,80 @@ print("\nSmoke-test result:", result)
 print(f"Checkpoint: {run_dir / 'best_model.pt'}")
 
 # %% [markdown]
-# ## 7. Next steps
+# ## 7. Interpretability dry run (StimulusGAT XAI pipeline)
+#
+# Runs the full interpretability pipeline (`aad_xai.xai.sgat_explain`:
+# channel occlusion/permutation importance, attention-weight extraction,
+# frequency-band contribution, a faithfulness comparison of
+# attention-derived vs. occlusion-derived vs. random channel rankings, and a
+# cascading-randomization sanity check) against the checkpoint just trained
+# above, on a real batch of its own held-out test windows.
+#
+# **This is a dry run, not a result to draw conclusions from** -- the
+# checkpoint above was trained on only `N_SUBJECTS` subjects for `EPOCHS`
+# epochs and scored near/below chance. The point here is to validate the
+# pipeline against real data (checkpoint loading, real EEG/env tensor
+# shapes and dtypes, real `sfreq`) before ever pointing it at a properly-
+# trained checkpoint, e.g. one fold from
+# `kaggle_run_dtu_loso_sgat_full.ipynb`. To reuse this section against a
+# different checkpoint later: change `CHECKPOINT_PATH` and rebuild a test
+# batch from that checkpoint's own held-out subject(s) instead of `ds_test`.
+
+# %%
+import json as _json
+
+from torch.utils.data import DataLoader
+
+from aad_xai.models.sgat import StimulusGAT
+from aad_xai.xai.sgat_explain import run_sgat_explain
+
+CHECKPOINT_PATH = run_dir / "best_model.pt"
+EXPLAIN_BATCH_SIZE = 32
+
+ckpt = torch.load(CHECKPOINT_PATH, map_location="cpu")
+n_channels = ds_test[0][0].shape[0]
+explain_model = StimulusGAT(n_channels=n_channels, sfreq=cfg.preprocess.sfreq_out)
+explain_model.load_state_dict(ckpt["state_dict"])
+explain_model.eval()
+print(f"Loaded checkpoint: {CHECKPOINT_PATH}")
+
+explain_loader = DataLoader(ds_test, batch_size=min(EXPLAIN_BATCH_SIZE, len(ds_test)), shuffle=True)
+eeg_batch, env_batch, labels_batch = next(iter(explain_loader))
+labels_batch = labels_batch.long()
+print(f"Explain batch: eeg={tuple(eeg_batch.shape)} env={tuple(env_batch.shape)} labels={tuple(labels_batch.shape)}")
+
+explain_result = run_sgat_explain(
+    explain_model, eeg_batch, env_batch, labels_batch,
+    sfreq=cfg.preprocess.sfreq_out, n_boot=200, top_k_freq_channels=5, faithfulness_steps=10,
+)
+
+EXPLAIN_OUTPUT_PATH = Path(cfg.output_dir) / "sgat_explain_dryrun.json"
+EXPLAIN_OUTPUT_PATH.write_text(_json.dumps(explain_result, indent=2), encoding="utf-8")
+print(f"Interpretability dry-run results written to: {EXPLAIN_OUTPUT_PATH}")
+
+# %% [markdown]
+# ## 8. Headline numbers from the dry run
+
+# %%
+occ_sorted = sorted(explain_result["channel_occlusion_importance"], key=lambda r: abs(r["mean_dp"]), reverse=True)
+print("Top 5 channels by |occlusion delta-P| (dry run -- not yet meaningful, see caveat above):")
+for row in occ_sorted[:5]:
+    print(f"  channel {row['channel']}: mean_dp={row['mean_dp']:.5f}  p={row['p_value']:.3f}  fdr_sig={row['fdr_sig']}")
+
+print("\nAttention summary caveat:", explain_result["attention_summary_a"]["_caveat"])
+
+print("\nFaithfulness (deletion curve, confidence at 0% vs 100% masked):")
+for name, curves in explain_result["faithfulness_comparison"].items():
+    d = curves["deletion"]
+    print(f"  {name:10s}: {d[0]:.4f} -> {d[-1]:.4f}")
+
+# %% [markdown]
+# ## 9. Next steps
 #
 # - This validates the real-DTU path end-to-end -- not a benchmark result
-#   (too few subjects/epochs for that).
+#   (too few subjects/epochs for that), and the interpretability dry run
+#   above validates the XAI pipeline against real data -- not a finding to
+#   report (see its own caveats above).
 # - To scale up: raise `N_SUBJECTS` (or drop `_SubjectSubset` to use all 18
 #   subjects present), raise `EPOCHS`, and/or run the full
 #   `aad_xai.run_experiments --model sgat` CV harness for a proper
