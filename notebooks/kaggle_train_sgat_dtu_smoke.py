@@ -25,15 +25,16 @@
 # - Attach dataset `dulanamanjitha/aad-xai-artifacts` (holds DTU EEG + Audio)
 # - GPU optional -- helps, not required at this smoke scale
 #
-# **Known open item** (see the project plan): the default electrode
-# adjacency `StimulusGAT` builds (`config/dtu_channel_montage.csv`,
-# distance-based k=6) has not yet been verified against this dataset's true
-# native channel order. This notebook still runs and trains regardless --
-# an unverified spatial *prior* affects which channel pairs the GAT can
-# attend between, not whether the model runs -- but treat any channel-level
-# interpretability from a run built on this notebook as provisional until
-# that verification (`stgcn/channel_order_check.py`-style, against a real
-# `S1.mat`'s `data.dim.chan.eeg`) is done.
+# **Accepted assumption (project decision, 2026-10-16)**: the default
+# electrode adjacency `StimulusGAT` builds (`config/dtu_channel_montage.csv`,
+# distance-based k=6) is assumed to match this dataset's true native channel
+# order, without independent verification against a real `S1.mat`'s
+# `data.dim.chan.eeg` (the `stgcn/channel_order_check.py`-style check that
+# would confirm this was deliberately skipped for now). An unverified
+# spatial *prior* affects which channel pairs the GAT can attend between,
+# not whether the model runs or trains correctly -- but if channel-level
+# attention/importance findings look anomalous or hard to interpret
+# anatomically, revisit this assumption first before trusting them further.
 
 # %% [markdown]
 # ## 1. Clone repository and install dependencies

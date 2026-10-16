@@ -29,12 +29,14 @@
 # - Attach dataset `dulanamanjitha/aad-xai-artifacts` (holds DTU EEG + Audio)
 # - GPU strongly recommended -- 18 independent trainings, not 1
 #
-# **Known open item** (see the project plan): the default electrode
-# adjacency `StimulusGAT` builds (`config/dtu_channel_montage.csv`,
-# distance-based k=6) has not yet been verified against DTU's true native
-# channel order. Treat channel-level interpretability from this run's
-# checkpoints as provisional until that's verified -- it does not affect
-# whether training/accuracy here is valid, only channel-identity claims.
+# **Accepted assumption (project decision, 2026-10-16)**: the default
+# electrode adjacency `StimulusGAT` builds (`config/dtu_channel_montage.csv`,
+# distance-based k=6) is assumed to match DTU's true native channel order,
+# without independent verification. This does not affect whether
+# training/accuracy here is valid -- only channel-identity claims. If
+# channel-level attention/importance findings from this run's checkpoints
+# look anomalous or hard to interpret anatomically, revisit this assumption
+# first before trusting them further.
 
 # %% [markdown]
 # ## 1. Clone repository and install dependencies
