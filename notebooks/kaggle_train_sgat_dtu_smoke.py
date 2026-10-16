@@ -265,10 +265,14 @@ for row in occ_sorted[:5]:
 
 print("\nAttention summary caveat:", explain_result["attention_summary_a"]["_caveat"])
 
-print("\nFaithfulness (deletion curve, confidence at 0% vs 100% masked):")
+# NOTE: curves[0] (0% masked) and curves[-1] (100% masked) are
+# mathematically IDENTICAL for every ranking -- at those two endpoints every
+# ranking masks either nothing or everything, so order never matters there.
+# Compare rankings via auc_deletion/auc_insertion instead (lower
+# auc_deletion / higher auc_insertion = a more faithful ranking).
+print("\nFaithfulness (lower auc_deletion / higher auc_insertion = more faithful ranking):")
 for name, curves in explain_result["faithfulness_comparison"].items():
-    d = curves["deletion"]
-    print(f"  {name:10s}: {d[0]:.4f} -> {d[-1]:.4f}")
+    print(f"  {name:10s}: auc_deletion={curves['auc_deletion']:.5f}  auc_insertion={curves['auc_insertion']:.5f}")
 
 # %% [markdown]
 # ## 9. Next steps

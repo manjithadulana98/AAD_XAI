@@ -293,6 +293,7 @@ class TestFaithfulnessComparison:
         for curves in result.values():
             assert len(curves["deletion"]) == 6  # steps=5 -> 6 points (0..steps inclusive)
             assert len(curves["insertion"]) == 6
+            assert "auc_deletion" in curves and "auc_insertion" in curves
 
     def test_deletion_curve_moves(self, sgat_model, eeg_batch, env_batch, labels):
         wrapper = StimulusGATDecisionWrapper(sgat_model)
@@ -304,6 +305,43 @@ class TestFaithfulnessComparison:
         # Loose sign-of-effect check (untrained/tiny fixture model, not a strict guarantee):
         # full deletion should not leave confidence higher than no deletion by more than noise.
         assert curves["deletion"][-1] <= curves["deletion"][0] + 0.2
+
+    def test_endpoints_identical_across_rankings_by_construction(self, sgat_model, eeg_batch, env_batch, labels):
+        """0% masked (no ranking has masked anything yet) and 100% masked
+        (every ranking has masked everything) are mathematically guaranteed
+        identical regardless of channel_ranking -- this is the exact
+        real-world finding that motivated auc_deletion/auc_insertion:
+        comparing rankings via curves[0]/curves[-1] alone can never show a
+        difference, by construction, not because the rankings don't differ."""
+        wrapper = StimulusGATDecisionWrapper(sgat_model)
+        n = eeg_batch.shape[1]
+        ranking_a = list(range(n))
+        ranking_b = list(reversed(range(n)))
+        curves_a = sgat_explain.faithfulness_from_channel_ranking(
+            wrapper, eeg_batch, env_batch, labels, ranking_a, steps=10,
+        )
+        curves_b = sgat_explain.faithfulness_from_channel_ranking(
+            wrapper, eeg_batch, env_batch, labels, ranking_b, steps=10,
+        )
+        assert curves_a["deletion"][0] == curves_b["deletion"][0]
+        assert curves_a["deletion"][-1] == curves_b["deletion"][-1]
+        assert curves_a["insertion"][0] == curves_b["insertion"][0]
+        assert curves_a["insertion"][-1] == curves_b["insertion"][-1]
+
+
+class TestNormalizedAuc:
+    def test_constant_curve(self):
+        assert sgat_explain._normalized_auc([0.5, 0.5, 0.5, 0.5]) == pytest.approx(0.5)
+
+    def test_matches_manual_trapezoidal_rule(self):
+        values = [0.0, 1.0, 1.0, 0.0]
+        # trapezoidal area over 3 unit-wide intervals, normalized by 3 intervals:
+        # (0.5*(0+1) + 0.5*(1+1) + 0.5*(1+0)) / 3
+        expected = (0.5 * 1.0 + 0.5 * 2.0 + 0.5 * 1.0) / 3
+        assert sgat_explain._normalized_auc(values) == pytest.approx(expected)
+
+    def test_single_value(self):
+        assert sgat_explain._normalized_auc([0.7]) == pytest.approx(0.7)
 
 
 # ============================================================================

@@ -45,6 +45,26 @@ def _p_attended(wrapper: StimulusGATDecisionWrapper, eeg: torch.Tensor, labels: 
     return probs.gather(1, labels.view(-1, 1).long()).squeeze(1)
 
 
+def _normalized_auc(values: list[float]) -> float:
+    """Trapezoidal area under a curve of evenly-spaced points, normalized by
+    the number of intervals so the result is an average curve height
+    (comparable across different `steps`), independent of numpy's
+    trapz/trapezoid naming churn (trapz removed in NumPy 2.0).
+
+    Not a numpy.trapz/trapezoid call for exactly that reason: the deletion/
+    insertion curve's FIRST and LAST points are mathematically identical for
+    every channel ranking (0% masked = no masking regardless of order; 100%
+    masked = everything zeroed regardless of order) -- only the area under
+    the intermediate points distinguishes one ranking from another, which is
+    why faithfulness_comparison() must be read via this summary, not by
+    comparing curves[0]/curves[-1] alone.
+    """
+    arr = np.asarray(values, dtype=float)
+    if len(arr) < 2:
+        return float(arr[0]) if len(arr) else 0.0
+    return float((arr.sum() - 0.5 * arr[0] - 0.5 * arr[-1]) / (len(arr) - 1))
+
+
 def _to_json_safe(obj):
     """Recursively convert numpy/torch scalars, arrays, and tensors to plain
     Python types, so a result dict round-trips through json.dumps."""
@@ -273,7 +293,21 @@ def faithfulness_from_channel_ranking(
     deletes/reveals one whole channel at a time, in ranking order.
 
     wrapper.set_env(env) is called here -- caller does not need to call it first.
-    Returns {"deletion": list[float], "insertion": list[float]}.
+
+    IMPORTANT: curves[0] (0% masked/revealed) and curves[-1] (100%) are
+    mathematically identical for ANY channel_ranking -- at those two
+    endpoints every ranking masks either nothing or everything, so order
+    never matters there. Only the intermediate points -- summarized here by
+    auc_deletion/auc_insertion -- distinguish one ranking's faithfulness from
+    another's. Comparing rankings via curves[0]/curves[-1] alone (as an
+    earlier version of the notebook using this function did) will always
+    show "no difference," regardless of whether the rankings actually differ.
+
+    Returns {"deletion": list[float], "insertion": list[float],
+             "auc_deletion": float, "auc_insertion": float} -- lower
+    auc_deletion and higher auc_insertion indicate a more faithful ranking
+    (deletes the true drivers first -> confidence drops fast and early;
+    reveals them first -> confidence rises fast and early).
     """
     wrapper.eval()
     wrapper.set_env(env)
@@ -286,7 +320,12 @@ def faithfulness_from_channel_ranking(
 
     deletion = deletion_curve(wrapper, eeg, labels, importance, steps=steps)
     insertion = insertion_curve(wrapper, eeg, labels, importance, steps=steps)
-    return {"deletion": deletion, "insertion": insertion}
+    return {
+        "deletion": deletion,
+        "insertion": insertion,
+        "auc_deletion": _normalized_auc(deletion),
+        "auc_insertion": _normalized_auc(insertion),
+    }
 
 
 def faithfulness_comparison(
@@ -299,6 +338,10 @@ def faithfulness_comparison(
     later be tested" instruction. If occlusion produces a steeper deletion
     curve than attention, that is the reportable finding, not a failure --
     attention is never assumed faithful going in.
+
+    Compare rankings via each result's auc_deletion/auc_insertion, not via
+    curves[0]/curves[-1] -- those two endpoints are identical across all
+    three rankings by construction (see faithfulness_from_channel_ranking).
     """
     n_channels = eeg.shape[1]
     rng = np.random.RandomState(seed)
