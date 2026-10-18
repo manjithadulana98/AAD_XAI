@@ -72,6 +72,22 @@ class CandidateConditionedGAT(nn.Module):
         self.register_buffer("adj_mask", adj)  # (N, N) bool
 
         self.film = nn.Linear(speech_dim, 2 * in_features)
+        # FiLM init: zero weight + positive bias on the gamma half, zero bias
+        # on the beta half. At epoch 1 this makes gamma = FILM_GAMMA_INIT
+        # (constant across speech inputs), beta = 0 -- so FiLM(speech) is
+        # non-zero from the first forward pass, giving film.weight real
+        # gradient signal immediately rather than relying on the two candidate
+        # passes' identical-at-init outputs to break symmetry through noise.
+        # The architecture, parameter counts, and state_dict layout are
+        # unchanged; only the three parameters' initial values differ from
+        # PyTorch's default Kaiming uniform. See the Oct 17 diagnostic + Oct
+        # 18 v2 LOSO result for the evidence pointing at this specifically.
+        FILM_GAMMA_INIT = 0.1
+        nn.init.zeros_(self.film.weight)
+        with torch.no_grad():
+            self.film.bias[:in_features].fill_(FILM_GAMMA_INIT)
+            self.film.bias[in_features:].zero_()
+
         self.W = nn.Linear(in_features, out_features, bias=False)
         self.a_src = nn.Parameter(torch.empty(n_heads, self.head_dim))
         self.a_dst = nn.Parameter(torch.empty(n_heads, self.head_dim))

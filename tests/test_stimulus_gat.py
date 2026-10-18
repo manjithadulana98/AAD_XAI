@@ -152,7 +152,15 @@ class TestCandidateConditionedGAT:
         loss = out.sum()
         loss.backward()
         assert node_feats.grad is not None and node_feats.grad.abs().sum() > 0
-        assert speech.grad is not None and speech.grad.abs().sum() > 0
+        # Note: speech.grad is EXACTLY ZERO at init with the FiLM-init fix,
+        # because film.weight is initialized to zero -- so d(out)/d(speech) =
+        # film.weight * ... = 0. This is the intended behavior: the gradient
+        # flows into film.weight (which updates film's response to speech) on
+        # the first backward pass, giving the FiLM mechanism a non-degenerate
+        # gradient regime to escape from, rather than relying on each
+        # candidate's noise-level FiLM output to break symmetry. Check
+        # film.weight.grad instead -- THAT is what must receive signal.
+        assert model.film.weight.grad is not None and model.film.weight.grad.abs().sum() > 0
 
     def test_attention_respects_adjacency(self):
         n = 5
@@ -173,12 +181,51 @@ class TestCandidateConditionedGAT:
         row_sums = attn.sum(dim=-1)
         assert torch.allclose(row_sums, torch.ones_like(row_sums), atol=1e-5)
 
-    def test_film_conditioning_changes_output(self):
+    def test_film_init_breaks_candidate_symmetry_at_epoch_1(self):
+        """Regression test for the FiLM-init fix (Oct 18). film.weight must be
+        exactly zero and film.bias[:in_features] must be exactly 0.1 at init,
+        so FiLM output at epoch 1 is non-zero (gamma=0.1, beta=0) regardless
+        of speech input. This gives film.weight real gradient signal from the
+        first backward pass; the prior default-Kaiming init produced gamma,
+        beta ~= 0, which combined with the model's two identical candidate
+        passes at init to leave FiLM in a near-degenerate gradient regime
+        that the full-dataset LOSO training couldn't escape. If this test
+        fails, re-check sgat_gat_layer.py's CandidateConditionedGAT.__init__
+        -- someone probably ran an auto-reformat or revert that stripped the
+        explicit init."""
+        n, in_features = 5, 6
+        adj = _small_adjacency(n)
+        model = CandidateConditionedGAT(
+            n_channels=n, in_features=in_features, speech_dim=4, out_features=8,
+            adjacency=adj, n_heads=2, dropout=0.0,
+        )
+        assert torch.all(model.film.weight == 0.0)
+        assert torch.all(model.film.bias[:in_features] == 0.1)
+        assert torch.all(model.film.bias[in_features:] == 0.0)
+
+        # Direct behavioral check: FiLM output on any input is (gamma=0.1, beta=0).
+        model.eval()
+        speech = torch.randn(3, 4)
+        gamma, beta = model.film(speech).chunk(2, dim=-1)
+        assert torch.allclose(gamma, torch.full_like(gamma, 0.1))
+        assert torch.allclose(beta, torch.zeros_like(beta))
+
+    def test_film_conditioning_changes_output_after_training(self):
+        """FiLM is INTENTIONALLY input-independent at init (film.weight = 0,
+        so FiLM(speech) is a constant gamma=0.1, beta=0 regardless of speech).
+        That's what the FiLM-init fix guarantees. The property that FiLM
+        becomes genuinely input-sensitive after training is checked by
+        simulating one gradient step that nudges film.weight away from zero
+        -- which is all the full training needs to escape the symmetric
+        starting point."""
         n = 5
         adj = _small_adjacency(n)
         model = CandidateConditionedGAT(
             n_channels=n, in_features=6, speech_dim=4, out_features=8, adjacency=adj, n_heads=2, dropout=0.0,
         )
+        # Manually perturb film.weight to simulate "after at least one update step"
+        with torch.no_grad():
+            model.film.weight.add_(torch.randn_like(model.film.weight) * 0.1)
         model.eval()
         node_feats = torch.randn(2, n, 6)
         speech_1 = torch.randn(2, 4)
@@ -276,6 +323,14 @@ class TestStimulusGAT:
         assert not any("_a" in n or "_b" in n for n in names)
 
         # A loss on score_a alone still back-props through the shared modules.
+        # Nudge film.weight off zero first -- at init it's exactly zero
+        # (FiLM-init fix), so d(output)/d(speech_encoder params) = film.weight
+        # * ... = 0 through FiLM on epoch 1. This test checks the structural
+        # weight-sharing property that applies AFTER the first update step
+        # has moved film off its symmetric starting point.
+        with torch.no_grad():
+            model.gat.film.weight.add_(torch.randn_like(model.gat.film.weight) * 0.1)
+
         model.zero_grad()
         eeg2 = torch.randn(2, 6, 128)
         env2 = torch.randn(2, 2, 128)
