@@ -79,6 +79,27 @@ class WindowedEEGAudioDataset(Dataset):
       - eeg_window: (C, T)
       - env_window: (2, T)
       - label: int (0/1)
+
+    Parameters
+    ----------
+    standardize_eeg : bool
+        If True, z-score each window's EEG per-channel over its own time
+        axis (``(eeg - eeg.mean(axis=-1)) / eeg.std(axis=-1)``) before
+        returning it. Default False, preserving this class's historical
+        behavior for existing callers (e.g. ExternalAADNet). DTU/KUL EEG
+        amplitude varies substantially across subjects (electrode
+        impedance/gain) with no normalization anywhere upstream in this
+        pipeline -- TRF is unaffected because ``TRFDecoder.fit`` z-scores
+        its own lag-matrix features internally, and VLAAI's separate loader
+        (``vlaai_dataset.py``) already standardizes per-trial, but nothing
+        upstream of this class does. Enable this for consumers (like
+        StimulusGAT) with no normalization of their own -- a model trained
+        on raw, unnormalized amplitude across many heterogeneous subjects in
+        one batch can fail to fit the training population at all (observed:
+        StimulusGAT train accuracy pinned at chance across 40 epochs on
+        6,000 real windows, despite perfectly memorizing a same-scale
+        16-window toy batch -- see the Oct 2026 train-vs-test-gap
+        diagnostic).
     """
 
     def __init__(
@@ -86,6 +107,7 @@ class WindowedEEGAudioDataset(Dataset):
         trials: Sequence[Trial],
         window_s: float,
         overlap_s: float = 0.0,
+        standardize_eeg: bool = False,
     ):
         self.trials = [
             t for t in trials
@@ -93,6 +115,7 @@ class WindowedEEGAudioDataset(Dataset):
         ]
         self.window_s = window_s
         self.overlap_s = overlap_s
+        self.standardize_eeg = standardize_eeg
 
         self._windows: list[WindowIndex] = []
         self._trial_idx: list[int] = []
@@ -126,6 +149,11 @@ class WindowedEEGAudioDataset(Dataset):
         trial = self.trials[self._trial_idx[idx]]
 
         eeg = trial.eeg[:, win.start:win.stop]
+        if self.standardize_eeg:
+            eeg = eeg.astype(np.float32, copy=True)
+            mean = eeg.mean(axis=1, keepdims=True)
+            std = eeg.std(axis=1, keepdims=True)
+            eeg = (eeg - mean) / (std + 1e-8)
         env = np.stack(
             [
                 trial.audio_a[win.start:win.stop],

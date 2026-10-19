@@ -925,9 +925,14 @@ def run_experiment(
                 )
         else:
             ds_cls = WindowedEEGAudioDataset if model_name in _TWO_STREAM_MODELS else WindowedEEGDataset
-            ds_tr = ds_cls(train_trials, window_s=float(train_window_s), overlap_s=overlap_s)
-            ds_val = ds_cls(val_trials, window_s=float(train_window_s), overlap_s=overlap_s)
-            ds_te = ds_cls(test_trials, window_s=float(train_window_s), overlap_s=overlap_s)
+            # StimulusGAT has no normalization of its own anywhere upstream of
+            # the model and is sensitive to raw EEG amplitude scale (see
+            # WindowedEEGAudioDataset's standardize_eeg docstring);
+            # ExternalAADNet's existing behavior is left unchanged.
+            extra_kwargs = {"standardize_eeg": True} if model_name == "sgat" else {}
+            ds_tr = ds_cls(train_trials, window_s=float(train_window_s), overlap_s=overlap_s, **extra_kwargs)
+            ds_val = ds_cls(val_trials, window_s=float(train_window_s), overlap_s=overlap_s, **extra_kwargs)
+            ds_te = ds_cls(test_trials, window_s=float(train_window_s), overlap_s=overlap_s, **extra_kwargs)
 
             if len(ds_tr) == 0 or len(ds_val) == 0 or len(ds_te) == 0:
                 print(f"skip (empty dataset: tr={len(ds_tr)} val={len(ds_val)} te={len(ds_te)})")

@@ -114,9 +114,14 @@ def _prepare_data(
     overlap_s = cfg.window.overlap_s
 
     ds_cls = WindowedEEGAudioDataset if cfg.train.model in _TWO_STREAM_MODELS else WindowedEEGDataset
-    ds_train = ds_cls(trials_train, window_s=window_s, overlap_s=overlap_s)
-    ds_val = ds_cls(trials_val, window_s=window_s, overlap_s=0.0)
-    ds_test = ds_cls(trials_test, window_s=window_s, overlap_s=0.0)
+    # StimulusGAT has no normalization of its own anywhere upstream of the
+    # model and is sensitive to raw EEG amplitude scale (see
+    # WindowedEEGAudioDataset's standardize_eeg docstring); ExternalAADNet's
+    # existing behavior is left unchanged.
+    extra_kwargs = {"standardize_eeg": True} if cfg.train.model == "sgat" else {}
+    ds_train = ds_cls(trials_train, window_s=window_s, overlap_s=overlap_s, **extra_kwargs)
+    ds_val = ds_cls(trials_val, window_s=window_s, overlap_s=0.0, **extra_kwargs)
+    ds_test = ds_cls(trials_test, window_s=window_s, overlap_s=0.0, **extra_kwargs)
 
     # Defence-in-depth: no window overlap across splits
     assert_no_cross_split_overlap(
