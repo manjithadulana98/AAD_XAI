@@ -302,6 +302,35 @@ class TestStimulusGAT:
         assert eeg.grad is not None
         assert eeg.grad.abs().sum() > 0
 
+    def test_readout_input_is_normalized_regardless_of_gat_output_scale(self):
+        """Regression test for the readout-LayerNorm fix (Oct 2026): scaling
+        the GAT's pooled output by a large common factor must not change the
+        readout's score proportionally -- LayerNorm bounds the SHARED
+        (candidate-independent) magnitude that was previously free to grow
+        without affecting loss (2-class softmax cross-entropy is exactly
+        shift-invariant to equal growth in both candidates' scores)."""
+        model = _make_stimulus_gat()
+        model.eval()
+
+        captured = {}
+
+        def _capture(module, inputs, output):
+            captured["readout_input"] = inputs[0]
+
+        model.readout.register_forward_hook(_capture)
+
+        eeg = torch.randn(2, 6, 128)
+        env = torch.randn(2, 2, 128)
+        model(eeg, env)
+        readout_input = captured["readout_input"]
+
+        # LayerNorm output (readout's actual input) must be ~zero-mean/unit-std
+        # per sample, regardless of whatever scale gat_out.mean(dim=1) had.
+        means = readout_input.mean(dim=-1)
+        stds = readout_input.std(dim=-1, unbiased=False)
+        assert torch.allclose(means, torch.zeros_like(means), atol=1e-4)
+        assert torch.allclose(stds, torch.ones_like(stds), atol=1e-1)
+
     def test_custom_adjacency(self):
         n = 4
         adj = torch.eye(n) + torch.randn(n, n).abs() * 0.1

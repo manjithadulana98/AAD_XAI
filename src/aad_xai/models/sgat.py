@@ -144,6 +144,24 @@ class StimulusGAT(nn.Module):
             n_channels=n_channels, in_features=node_features, speech_dim=speech_embed_dim,
             out_features=gat_hidden, adjacency=adjacency, n_heads=gat_heads, dropout=dropout,
         )
+        # Normalizes the pooled per-candidate representation before readout.
+        # Without this, nothing bounds the SHARED (candidate-independent)
+        # component of the GAT's output from growing during training --
+        # 2-class softmax cross-entropy is exactly invariant to any shift
+        # added equally to both candidates' scores, so that growth doesn't
+        # reduce loss at all, yet it still happens (temporal/frequency
+        # encoders, node_fusion, and the GAT's own weights are literally
+        # shared between the two candidate passes, so their gradients
+        # accumulate contributions from both). Observed directly (Oct 2026
+        # score-gap-trajectory diagnostic): |score| grew 32x over 30 epochs
+        # while the candidate-differentiating score_gap, as a fraction of
+        # that scale, collapsed from 14% to under 0.2% -- i.e. over 99.8% of
+        # the model's growing output confidence carried no information about
+        # which candidate was attended. This LayerNorm (applied per-sample,
+        # after gat_out already differs between the two candidate passes --
+        # it does not erase genuine candidate-specific signal) removes that
+        # unconstrained shared-growth outlet.
+        self.readout_norm = nn.LayerNorm(gat_hidden)
         self.readout = nn.Linear(gat_hidden, 1)
 
     def _score_candidate(
@@ -155,7 +173,8 @@ class StimulusGAT(nn.Module):
             g, attn = gat_out                                # (B, N, F_out), (B, heads, N, N)
         else:
             g, attn = gat_out, None
-        score = self.readout(g.mean(dim=1)).squeeze(-1)       # (B,)
+        pooled = self.readout_norm(g.mean(dim=1))              # (B, gat_hidden)
+        score = self.readout(pooled).squeeze(-1)                # (B,)
         return score, attn
 
     def forward(
