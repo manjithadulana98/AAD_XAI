@@ -20,6 +20,20 @@ class NodeFeatureFusion(nn.Module):
     ``groups=n_channels``) -- no cross-channel mixing at this stage; that is
     reserved for the graph-attention layer, which uses the physical electrode
     adjacency as its prior.
+
+    Followed by a per-node LayerNorm (normalizing each electrode's own
+    out_features vector independently, so it's unaffected by batch
+    composition -- unlike BatchNorm, which this pipeline already has reason
+    to be cautious about with heterogeneous real subjects in one batch).
+    The raw linear projection alone has no normalization and no
+    nonlinearity, so nothing bounds its output scale as ``proj``'s weights
+    update during training; observed directly (Oct 2026 gradient/attention
+    instrumentation diagnostic): this output's std grew unboundedly (0.84 ->
+    20.5 over 20 epochs on real DTU data), which saturates the downstream
+    GAT's attention softmax into a degenerate near-one-hot pattern
+    (entropy collapsed to ~2% of its uniform-attention reference) with zero
+    accuracy improvement -- this LayerNorm is the fix for that observed
+    failure mode, not a speculative addition.
     """
 
     def __init__(self, n_channels: int, in_features: int, out_features: int):
@@ -30,6 +44,7 @@ class NodeFeatureFusion(nn.Module):
             n_channels * in_features, n_channels * out_features,
             kernel_size=1, groups=n_channels,
         )
+        self.norm = nn.LayerNorm(out_features)
 
     def forward(self, temporal: torch.Tensor, freq: torch.Tensor) -> torch.Tensor:
         """
@@ -46,7 +61,8 @@ class NodeFeatureFusion(nn.Module):
         h = torch.cat([temporal, freq], dim=-1)      # (B, C, F_t + F_f)
         h = h.reshape(B, -1, 1)                        # (B, C*(F_t+F_f), 1), electrode-major
         out = self.proj(h).squeeze(-1)                  # (B, C*out_features)
-        return out.view(B, self.n_channels, self.out_features)  # (B, C, out_features)
+        out = out.view(B, self.n_channels, self.out_features)  # (B, C, out_features)
+        return self.norm(out)  # per-node LayerNorm over the out_features axis
 
 
 def _load_default_adjacency(montage_path: Path | None = None) -> torch.Tensor:

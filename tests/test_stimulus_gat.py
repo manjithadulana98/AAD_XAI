@@ -116,6 +116,45 @@ class TestNodeFeatureFusion:
         assert temporal.grad is not None and temporal.grad.abs().sum() > 0
         assert freq.grad is not None and freq.grad.abs().sum() > 0
 
+    def test_output_is_normalized(self):
+        """Regression test for the LayerNorm fix (Oct 2026): per-node output
+        must have ~zero mean / ~unit std over the out_features axis,
+        regardless of input scale -- this is what keeps node_fusion's output
+        bounded as its proj weights evolve during training (the observed
+        failure mode: unbounded output growth saturating the GAT's attention
+        softmax into a degenerate near-one-hot pattern)."""
+        model = NodeFeatureFusion(n_channels=5, in_features=6, out_features=8)
+        # Large input scale -- without LayerNorm this would produce a
+        # correspondingly large-magnitude output.
+        temporal = torch.randn(3, 5, 4) * 100.0
+        freq = torch.randn(3, 5, 2) * 100.0
+        out = model(temporal, freq)
+        means = out.mean(dim=-1)
+        stds = out.std(dim=-1, unbiased=False)
+        assert torch.allclose(means, torch.zeros_like(means), atol=1e-4)
+        assert torch.allclose(stds, torch.ones_like(stds), atol=1e-1)
+
+    def test_output_scale_bounded_across_simulated_weight_growth(self):
+        """Simulate several large gradient-style updates to proj's weights
+        (the mechanism that produced unbounded growth pre-fix) and confirm
+        output std stays bounded post-fix, rather than scaling with the
+        weight magnitude."""
+        model = NodeFeatureFusion(n_channels=4, in_features=3, out_features=6)
+        temporal = torch.randn(2, 4, 2)
+        freq = torch.randn(2, 4, 1)
+
+        stds = []
+        with torch.no_grad():
+            for _ in range(5):
+                model.proj.weight.mul_(3.0)  # simulate runaway weight growth
+                out = model(temporal, freq)
+                stds.append(out.std().item())
+
+        # Despite proj's weights growing by 3^5 ~= 243x, LayerNorm keeps the
+        # final output's overall scale close to the first iteration's, not
+        # growing proportionally with the weight magnitude.
+        assert stds[-1] < stds[0] * 3  # loose bound -- NOT ~243x like pre-fix
+
 
 def _small_adjacency(n: int) -> torch.Tensor:
     """Deterministic small adjacency: a ring (each node connects to its two
