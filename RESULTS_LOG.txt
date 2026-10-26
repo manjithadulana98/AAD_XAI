@@ -98,6 +98,44 @@ Notes
 - runs/trf/seed44/win1.0 exists but has no results.json yet (only meta.json).
 ----------------------------------------------------------------------
 
+----------------------------------------------------------------------
+Entry date: 2026-10-26
+Experiment: StimulusGAT v4 (time-resolved FiLM) — DTU subject-independent LOSO, paired TRF
+Sources:
+- notebooks/kaggle_run_dtu_loso_sgat_v4_time_resolved.py (Kaggle kernel
+  dulanamanjitha/stimulusgat-loso-v4-time-resolved, code at commit ac02af8)
+- results/loso_v4_results.json (untracked; regenerate from the notebook)
+
+Method / Protocol
+- CV: leave_one_subject_out(all_trials, seed=42), 18 folds; 1 random val subject per fold
+- Model: StimulusGAT with TimeResolvedFiLM (commit d00c768), best-val-accuracy checkpoint
+- Key preprocessing: PreprocessConfig defaults (64 Hz), 5 s windows, no overlap,
+  per-window per-channel EEG standardization (SGAT only)
+- Key hyperparams: AdamW lr=1e-3, wd=1e-4, batch 64, 25 epochs, 1 seed per fold
+- Baseline: backward TRF on the SAME folds (tmin 0, tmax 0.4 s, alpha=100 fixed,
+  broadband envelope), via WindowedEEGAudioDataset
+
+Results (mean ± std across 18 test subjects)
+- StimulusGAT v4:                          0.6286 ± 0.0487
+- StimulusGAT v4, envelopes shifted 2.5 s: 0.4988 ± 0.0195  (alignment control)
+- TRF, same folds:                         0.5997 ± 0.0408
+- SGAT − TRF: +0.0289, SGAT better on 16/18 subjects, Wilcoxon p=0.0020
+- SGAT − shifted: +0.1297, Wilcoxon p=7.6e-06
+- Previous StimulusGAT LOSO: v1 0.4887, v2 0.4814, v3 0.4952 (all chance)
+
+Notes
+- Alignment control: shifting both envelopes by 2.5 s keeps every time-averaged
+  speech statistic but breaks EEG alignment; accuracy falls to chance on every
+  subject (0.475–0.538). The model decodes by tracking, not by a shortcut
+  (candidate A is always the male speaker).
+- The TRF baseline uses a fixed alpha; a per-fold tuned TRF is needed before
+  claiming StimulusGAT beats linear decoding in general.
+- The 0.6328 TRF figure above is WITHIN-subject (story/speaker-out, subband
+  envelope, tuned alpha) and is not comparable to subject-independent LOSO.
+- Architecture and lr were developed on a 14-subject split whose test subjects
+  (S10, S17) are part of this LOSO: mild adaptivity, single config, one seed.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
