@@ -15,7 +15,7 @@ class SharedSpeechEncoder(nn.Module):
     Parameters
     ----------
     embed_dim : int
-        Output embedding dimension.
+        Channels of the output sequence.
     hidden : int
         Number of channels after the first conv layer.
     kernel_sizes : tuple[int, int]
@@ -39,7 +39,6 @@ class SharedSpeechEncoder(nn.Module):
             nn.Conv1d(hidden, embed_dim, kernel_size=k2, padding=k2 // 2),
             nn.BatchNorm1d(embed_dim),
             nn.ELU(),
-            nn.AdaptiveAvgPool1d(1),
         )
 
     def forward(self, env: torch.Tensor) -> torch.Tensor:
@@ -50,7 +49,7 @@ class SharedSpeechEncoder(nn.Module):
 
         Returns
         -------
-        Tensor, shape (B, embed_dim)
+        Tensor, shape (B, embed_dim, T) -- a sequence, not a pooled vector, so
+        it can modulate EEG features time step by time step.
         """
-        h = env.unsqueeze(1)          # (B, 1, T)
-        return self.net(h).squeeze(-1)  # (B, embed_dim)
+        return self.net(env.unsqueeze(1))  # (B, 1, T) -> (B, embed_dim, T)

@@ -60,7 +60,6 @@ class PerChannelTemporalEncoder(nn.Module):
             nn.BatchNorm1d(n_channels * out_features),
             nn.ELU(),
         )
-        self.pool = nn.AdaptiveAvgPool1d(1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -70,10 +69,10 @@ class PerChannelTemporalEncoder(nn.Module):
 
         Returns
         -------
-        Tensor, shape (B, C, out_features)
+        Tensor, shape (B, C, out_features, T) -- time axis kept so speech can
+        condition it before pooling (see TimeResolvedFiLM).
         """
-        B = x.size(0)
+        B, _, T = x.shape
         h = self.block1(x)              # (B, C*hidden_features, T)
         h = self.block2(h)               # (B, C*out_features, T)
-        h = self.pool(h).squeeze(-1)      # (B, C*out_features)
-        return h.view(B, self.n_channels, self.out_features)  # (B, C, out_features)
+        return h.view(B, self.n_channels, self.out_features, T)  # (B, C, out_features, T)

@@ -225,15 +225,12 @@ class TestChannelImportance:
         """Zero-occlusion and value-shuffling are different perturbations --
         they should not coincidentally produce identical delta-P everywhere.
 
-        At init, film.weight is exactly zero (FiLM-init fix), so the model's
-        output doesn't depend on env, and node_feats dominate the attention
-        computation. Nudge film.weight off zero first to simulate "after one
-        update step" -- this test checks the behavioral property that
-        occlusion and permutation produce distinct importance signals, which
-        is only meaningful once the model has gradient-moved off its
-        symmetric starting point."""
+        At init, FiLM's weight is exactly zero, so the model's output doesn't
+        depend on env. Nudge it off zero first to simulate "after one update
+        step" -- distinct occlusion/permutation signals are only meaningful
+        once the model has moved off its symmetric starting point."""
         with torch.no_grad():
-            sgat_model.gat.film.weight.add_(torch.randn_like(sgat_model.gat.film.weight) * 0.1)
+            sgat_model.film.proj.weight.add_(torch.randn_like(sgat_model.film.proj.weight) * 0.1)
         wrapper = StimulusGATDecisionWrapper(sgat_model)
         occ = sgat_explain.channel_occlusion_importance(wrapper, eeg_batch, env_batch, labels, n_boot=50)
         perm = sgat_explain.channel_permutation_importance(wrapper, eeg_batch, env_batch, labels, n_boot=50)

@@ -9,6 +9,7 @@ import torch.nn as nn
 from .sgat_temporal_encoder import PerChannelTemporalEncoder
 from .sgat_frequency_encoder import PerChannelFrequencyEncoder
 from .sgat_speech_encoder import SharedSpeechEncoder
+from .sgat_film import TimeResolvedFiLM
 from .sgat_gat_layer import CandidateConditionedGAT
 
 
@@ -90,15 +91,22 @@ class StimulusGAT(nn.Module):
 
     Pipeline (see CLAUDE.md for the full 9-step spec)::
 
-        EEG -> temporal encoder  -+
-            -> frequency encoder -+-> NodeFeatureFusion -> per-electrode node features
-        Speech A -> shared speech encoder -> CandidateConditionedGAT(node_feats, speech_a) -> score_a
-        Speech B -> shared speech encoder -> CandidateConditionedGAT(node_feats, speech_b) -> score_b
-        logits = [score_a, score_b]
+        EEG -> temporal encoder -> h (B, C, F_t, T) ---------------+
+        Speech X -> shared speech encoder -> s_X (B, D_s, T) -> TimeResolvedFiLM(h, s_X)
+                                                     -> time-pooled (B, C, F_t)
+        EEG -> frequency encoder (B, C, F_f) ---------> NodeFeatureFusion -> node_X
+        node_X -> CandidateConditionedGAT -> mean over nodes -> readout -> score_X
+        logits = [score_A, score_B]
 
-    The speech encoder and the GAT are each a *single* module instance,
-    invoked once per candidate -- weight sharing comes from Python-level
-    reuse of the same submodule, not from any special code.
+    Speech conditions the EEG features at every time step *before* they are
+    averaged over time, so the node features (and hence the graph attention)
+    can depend on EEG-speech temporal covariance. Conditioning after pooling
+    cannot represent envelope tracking (see TimeResolvedFiLM).
+
+    Both candidates go through one shared instance of every module, batched
+    together along the batch axis, so BatchNorm statistics in the speech
+    encoder are computed over both candidates at once (identically in
+    training and evaluation).
 
     Parameters
     ----------
@@ -138,44 +146,17 @@ class StimulusGAT(nn.Module):
         self.node_fusion = NodeFeatureFusion(
             n_channels, in_features=temporal_features + freq_features, out_features=node_features,
         )
-        # Single shared instances -- invoked twice below, once per candidate.
         self.speech_encoder = SharedSpeechEncoder(embed_dim=speech_embed_dim, dropout=dropout)
+        self.film = TimeResolvedFiLM(speech_dim=speech_embed_dim, n_features=temporal_features)
         self.gat = CandidateConditionedGAT(
-            n_channels=n_channels, in_features=node_features, speech_dim=speech_embed_dim,
+            n_channels=n_channels, in_features=node_features,
             out_features=gat_hidden, adjacency=adjacency, n_heads=gat_heads, dropout=dropout,
         )
-        # Normalizes the pooled per-candidate representation before readout.
-        # Without this, nothing bounds the SHARED (candidate-independent)
-        # component of the GAT's output from growing during training --
-        # 2-class softmax cross-entropy is exactly invariant to any shift
-        # added equally to both candidates' scores, so that growth doesn't
-        # reduce loss at all, yet it still happens (temporal/frequency
-        # encoders, node_fusion, and the GAT's own weights are literally
-        # shared between the two candidate passes, so their gradients
-        # accumulate contributions from both). Observed directly (Oct 2026
-        # score-gap-trajectory diagnostic): |score| grew 32x over 30 epochs
-        # while the candidate-differentiating score_gap, as a fraction of
-        # that scale, collapsed from 14% to under 0.2% -- i.e. over 99.8% of
-        # the model's growing output confidence carried no information about
-        # which candidate was attended. This LayerNorm (applied per-sample,
-        # after gat_out already differs between the two candidate passes --
-        # it does not erase genuine candidate-specific signal) removes that
-        # unconstrained shared-growth outlet.
         self.readout_norm = nn.LayerNorm(gat_hidden)
-        self.readout = nn.Linear(gat_hidden, 1)
-
-    def _score_candidate(
-        self, node_feats: torch.Tensor, env_candidate: torch.Tensor, return_attention_weights: bool,
-    ):
-        speech_embed = self.speech_encoder(env_candidate)  # (B, D_s)
-        gat_out = self.gat(node_feats, speech_embed, return_attention_weights)
-        if return_attention_weights:
-            g, attn = gat_out                                # (B, N, F_out), (B, heads, N, N)
-        else:
-            g, attn = gat_out, None
-        pooled = self.readout_norm(g.mean(dim=1))              # (B, gat_hidden)
-        score = self.readout(pooled).squeeze(-1)                # (B,)
-        return score, attn
+        # No bias: it adds equally to both candidates' scores, so it cannot
+        # affect predictions and gets exactly zero gradient under 2-class
+        # softmax CE -- yet Adam amplifies rounding noise into steady drift.
+        self.readout = nn.Linear(gat_hidden, 1, bias=False)
 
     def forward(
         self, eeg: torch.Tensor, env: torch.Tensor, return_attention_weights: bool = False,
@@ -194,14 +175,22 @@ class StimulusGAT(nn.Module):
         logits : Tensor, shape (B, 2) -- [score_a, score_b]
         attn : dict[str, Tensor], only if return_attention_weights=True
         """
-        t_feat = self.temporal_encoder(eeg)          # (B, C, F_t)
-        f_feat = self.frequency_encoder(eeg)          # (B, C, F_f)
-        node_feats = self.node_fusion(t_feat, f_feat)  # (B, C, F_node) -- shared by both candidates
+        B, _, T = eeg.shape
+        h = self.temporal_encoder(eeg)                 # (B, C, F_t, T)
+        f_feat = self.frequency_encoder(eeg)            # (B, C, F_f)
 
-        score_a, attn_a = self._score_candidate(node_feats, env[:, 0, :], return_attention_weights)
-        score_b, attn_b = self._score_candidate(node_feats, env[:, 1, :], return_attention_weights)
+        # Both candidates in one batch: index k*B + b is candidate k of sample b.
+        speech = self.speech_encoder(env.transpose(0, 1).reshape(2 * B, T))  # (2B, D_s, T)
+        speech = speech.view(2, B, -1, T)                                      # (2, B, D_s, T)
+        t_cond = torch.cat([self.film(h, speech[0]), self.film(h, speech[1])])  # (2B, C, F_t)
 
-        logits = torch.stack([score_a, score_b], dim=1)  # (B, 2)
+        node_feats = self.node_fusion(t_cond, f_feat.repeat(2, 1, 1))  # (2B, C, F_node)
+        gat_out = self.gat(node_feats, return_attention_weights)
+        g, attn = gat_out if return_attention_weights else (gat_out, None)  # (2B, N, F_out)
+
+        score = self.readout(self.readout_norm(g.mean(dim=1))).squeeze(-1)  # (2B,)
+        logits = score.view(2, B).t()                                        # (B, 2)
         if return_attention_weights:
-            return logits, {"attn_a": attn_a, "attn_b": attn_b}
+            attn = attn.view(2, B, *attn.shape[1:])                          # (2, B, heads, N, N)
+            return logits, {"attn_a": attn[0], "attn_b": attn[1]}
         return logits

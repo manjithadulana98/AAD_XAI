@@ -5,29 +5,19 @@ import torch.nn.functional as F
 
 
 class CandidateConditionedGAT(nn.Module):
-    """Multi-head graph-attention layer conditioned on a candidate's speech
-    embedding, restricted to a fixed physical electrode adjacency.
+    """Multi-head graph-attention layer over candidate-conditioned node
+    features, restricted to a fixed physical electrode adjacency.
 
-    Standard additive-attention GAT (Velickovic et al., 2018), with two
-    project-specific choices:
+    Standard additive-attention GAT (Velickovic et al., 2018). Attention
+    logits for non-adjacent electrode pairs are set to ``-inf`` before the
+    softmax, so attention mass is *provably* zero there -- the physical
+    electrode-adjacency graph hard-constrains attention support, it does not
+    merely bias it.
 
-    - **Adjacency masking**: attention logits for non-adjacent electrode
-      pairs are set to ``-inf`` before the softmax, so attention mass is
-      *provably* zero there -- the physical electrode-adjacency graph
-      hard-constrains attention support, it does not merely bias it.
-    - **Speech conditioning via FiLM**: the speech embedding produces a
-      per-electrode-feature (gamma, beta) via one Linear layer, which
-      modulates the node features *before* the standard attention score is
-      computed. Chosen over concatenating the speech embedding into the
-      per-edge score input because it keeps "speech conditioning" and
-      "graph attention" independently testable, costs a single global
-      Linear rather than a per-edge-scaling cost, and leaves the
-      attention-score function in textbook additive-GAT form (no new
-      attention mechanism invented).
-
-    A single instance of this module is invoked once per candidate by
-    ``StimulusGAT`` -- weight sharing across candidates comes from Python
-    reuse of the same instance, not from anything in this class.
+    Speech conditioning happens upstream (``TimeResolvedFiLM``, before
+    time-pooling): the node features this layer receives already depend on
+    the candidate, so the attention scores computed from them are
+    candidate-conditioned. The same instance scores both candidates.
 
     Parameters
     ----------
@@ -35,8 +25,6 @@ class CandidateConditionedGAT(nn.Module):
         Number of graph nodes (EEG electrodes).
     in_features : int
         Input node feature dimension.
-    speech_dim : int
-        Speech embedding dimension.
     out_features : int
         Output node feature dimension (must be divisible by ``n_heads``).
     adjacency : Tensor
@@ -51,7 +39,6 @@ class CandidateConditionedGAT(nn.Module):
         self,
         n_channels: int,
         in_features: int,
-        speech_dim: int,
         out_features: int,
         adjacency: torch.Tensor,
         n_heads: int = 4,
@@ -71,23 +58,6 @@ class CandidateConditionedGAT(nn.Module):
         adj = (adjacency.float() + torch.eye(n_channels)) > 0  # add self-loops, binarize
         self.register_buffer("adj_mask", adj)  # (N, N) bool
 
-        self.film = nn.Linear(speech_dim, 2 * in_features)
-        # FiLM init: zero weight + positive bias on the gamma half, zero bias
-        # on the beta half. At epoch 1 this makes gamma = FILM_GAMMA_INIT
-        # (constant across speech inputs), beta = 0 -- so FiLM(speech) is
-        # non-zero from the first forward pass, giving film.weight real
-        # gradient signal immediately rather than relying on the two candidate
-        # passes' identical-at-init outputs to break symmetry through noise.
-        # The architecture, parameter counts, and state_dict layout are
-        # unchanged; only the three parameters' initial values differ from
-        # PyTorch's default Kaiming uniform. See the Oct 17 diagnostic + Oct
-        # 18 v2 LOSO result for the evidence pointing at this specifically.
-        FILM_GAMMA_INIT = 0.1
-        nn.init.zeros_(self.film.weight)
-        with torch.no_grad():
-            self.film.bias[:in_features].fill_(FILM_GAMMA_INIT)
-            self.film.bias[in_features:].zero_()
-
         self.W = nn.Linear(in_features, out_features, bias=False)
         self.a_src = nn.Parameter(torch.empty(n_heads, self.head_dim))
         self.a_dst = nn.Parameter(torch.empty(n_heads, self.head_dim))
@@ -99,14 +69,12 @@ class CandidateConditionedGAT(nn.Module):
     def forward(
         self,
         node_feats: torch.Tensor,
-        speech_embed: torch.Tensor,
         return_attention_weights: bool = False,
     ):
         """
         Parameters
         ----------
-        node_feats : Tensor, shape (B, N, F_in)
-        speech_embed : Tensor, shape (B, D_s)
+        node_feats : Tensor, shape (B, N, F_in) -- candidate-conditioned
         return_attention_weights : bool
             If True, also return the (B, heads, N, N) attention tensor.
 
@@ -116,12 +84,7 @@ class CandidateConditionedGAT(nn.Module):
         attn : Tensor, shape (B, heads, N, N), only if return_attention_weights=True
         """
         B, N, _ = node_feats.shape
-
-        # FiLM: condition node features on this candidate's speech embedding.
-        gamma, beta = self.film(speech_embed).chunk(2, dim=-1)   # (B, F_in) each
-        h = node_feats * (1 + gamma).unsqueeze(1) + beta.unsqueeze(1)  # (B, N, F_in)
-
-        Wh = self.W(h).view(B, N, self.n_heads, self.head_dim)   # (B, N, heads, d)
+        Wh = self.W(node_feats).view(B, N, self.n_heads, self.head_dim)   # (B, N, heads, d)
 
         # Additive attention, decomposed: e_ij = LeakyReLU(a_src . Wh_i + a_dst . Wh_j)
         src = torch.einsum("bnhd,hd->bnh", Wh, self.a_src)        # (B, N, heads)

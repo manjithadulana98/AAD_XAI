@@ -364,7 +364,7 @@ def sanity_check_cascading_randomization(
 ) -> dict:
     """Adebayo et al. cascading-randomization sanity check, applied to
     StimulusGAT's top-level children (temporal_encoder, frequency_encoder,
-    node_fusion, speech_encoder, gat, readout).
+    node_fusion, speech_encoder, film, gat, readout_norm, readout).
 
     importance_fn : "occlusion" (requires labels) or "attention" (uses
         candidate A's attention summary; model.gat.adj_mask is a fixed
