@@ -233,8 +233,9 @@ Comparison with plain LOSO (same 18 subjects, paired)
 
 Notes
 - Hearing other subjects' EEG for the same stories did not inflate plain LOSO:
-  both models score the same when train and test share no stories, with ~25%
-  less training data per fold (13 vs 16 subjects, 2/3 of the stories). The
+  both models score the same when train and test share no stories, with ~45%
+  less training data per fold (13 subjects x ~2/3 of the stories vs 16
+  subjects x all stories). The
   SGAT advantage over a tuned linear decoder survives the stricter protocol.
 - Doubling the training windows by overlap did not measurably help (test +0.4
   points, n.s.). It is kept per the rule, but the val gain is also small and
