@@ -136,6 +136,59 @@ Notes
   (S10, S17) are part of this LOSO: mild adaptivity, single config, one seed.
 ----------------------------------------------------------------------
 
+----------------------------------------------------------------------
+Entry date: 2026-10-27
+Experiment: StimulusGAT v4 robustness — 3 seeds vs. validation-tuned TRF, same LOSO folds
+Sources:
+- notebooks/kaggle_run_dtu_loso_sgat_v4_seeds_tuned_trf.py (Kaggle kernel
+  dulanamanjitha/stimulusgat-loso-v4-seeds-tuned-trf, code at commit f069059)
+- loso_v4_seeds_tuned_trf.json (Kaggle output; seeds 43/44 + TRF grid per fold)
+  combined offline with results/loso_v4_results.json (seed 42); both untracked
+
+Method / Protocol
+- CV: identical folds to the 2026-10-26 entry (leave_one_subject_out, seed=42;
+  val subjects verified equal fold by fold)
+- StimulusGAT: unchanged v4 config; new seeds 43, 44 (+ seed 42 from v4)
+- TRF: backward ridge, lags 0-0.4 s, 19 alphas (1 .. 1e9, half-decade steps)
+  x {raw, per-window standardized EEG}; selected per fold by max attended-
+  envelope correlation on the fold's validation subject. Closed-form ridge path
+  from accumulated normal equations (matches sklearn Ridge to <4e-6 rel.)
+
+Results (mean ± std across 18 test subjects)
+- StimulusGAT seed 42 / 43 / 44:    0.6286 / 0.6258 / 0.6272
+- StimulusGAT 3-seed mean:          0.6272 ± 0.0511
+- Shifted-envelope control, 3 seeds: 0.4988 / 0.4956 / 0.5040 (all folds 0.467–0.552)
+- TRF, val-tuned:                   0.5988 ± 0.0443
+- TRF, alpha=100 raw (this solver): 0.6027   (v4 TRFDecoder: 0.5997)
+- TRF, best single config chosen on TEST (oracle, not legitimate): 0.6036
+- TRF, best config per test subject (oracle, upward-biased):        0.6172
+- SGAT mean − TRF tuned:   +0.0284, better on 13/18, Wilcoxon p=0.0057
+- SGAT mean − TRF a100:    +0.0245, better on 12/18, p=0.0079
+- SGAT mean − per-subject oracle TRF: +0.0100, 10/18, p=0.33
+- Each seed alone vs TRF tuned: p = 0.008 / 0.020 / 0.003
+- Seed variability: within-subject SD across seeds 0.014 (max 0.045), below
+  the 600-window binomial SE (~0.020); seed accuracies correlate 0.85–0.96
+  across subjects. Subject effects dominate; seeds do not.
+
+Notes
+- The v4 gain survives a tuned baseline and two more seeds: ~+2.8 points over
+  linear backward decoding, with the alignment control at chance for all seeds.
+- Tuning did not help the TRF (0.599 tuned vs 0.603 fixed); validation
+  correlation picked heavy regularisation (alpha 1e4–3e7) that did not raise
+  accuracy. Even the best of 38 TRF configs picked on the test set reaches
+  only 0.604, so this TRF family is at its ceiling; the baseline was not
+  undertuned. Caveat: richer linear baselines (subband envelopes, wider lags,
+  CCA) were not tried.
+- alpha=100 here does not reproduce v4's TRFDecoder per subject (16/18 differ,
+  max 0.018) though means agree to 0.003. Most likely cause: lags are built
+  within each 5 s window here vs. across concatenated windows in TRFDecoder.
+- One validation subject per fold makes model selection noisy: SGAT best
+  epochs range 1–25, and fold S1 (val S11, a near-chance subject) stopped at
+  epoch 1 for seeds 43/44 (test 0.550/0.612 vs 0.637 for seed 42).
+- Same adaptivity caveat as v4 (architecture developed on a split containing
+  S10/S17). Not comparable to the within-subject 0.6328 above.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
