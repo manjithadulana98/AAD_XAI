@@ -482,6 +482,119 @@ def strict_subject_independent_story_disjoint(
 
 
 # ======================================================================== #
+#  Option 6: DTU subject-group x story-group out
+# ======================================================================== #
+
+# DTU two-talker segments come from 7 (male story, female story) pairings in
+# which marianne_story3/4 each appear with two male stories. Linking stories
+# that share a talker's story gives 4 content groups (segments of 62):
+#   1: aske1, aske2 + marianne4 (23)   2: aske4, aske6 + marianne3 (17)
+#   3: aske3 + marianne5 (13)          4: aske5 + marianne1, marianne2 (9)
+# Derived from all 18 subjects' expinfo (Kaggle kernel
+# dulanamanjitha/dtu-stimulus-structure); every subject hears the same
+# segments, with the attended talker varying across subjects.
+DTU_MALE_STORY_TO_CONTENT_GROUP = {
+    "aske_story1": 1, "aske_story2": 1,
+    "aske_story4": 2, "aske_story6": 2,
+    "aske_story3": 3,
+    "aske_story5": 4,
+}
+
+# Story folds used for DTU: groups 3 and 4 are merged so folds are balanced
+# (23 / 17 / 22 segments).
+DTU_STORY_FOLDS: tuple[tuple[int, ...], ...] = ((1,), (2,), (3, 4))
+
+
+def dtu_content_group(trial: Trial) -> int | None:
+    """DTU story-content group (1-4), or None for single-talker trials.
+
+    The DTU loader sets ``group_id = f"{subject}_{wavfile_male}"``, e.g.
+    ``S1_aske_story1_trial_3.wav``; single-talker trials use ``dss.wav``.
+    """
+    wav = trial.group_id.split("_", 1)[1]
+    return DTU_MALE_STORY_TO_CONTENT_GROUP.get(wav.split("_trial")[0])
+
+
+def subject_group_story_out(
+    trials: list[Trial],
+    content_group=dtu_content_group,
+    story_folds: Sequence[Sequence[int]] = DTU_STORY_FOLDS,
+    n_subject_groups: int = 6,
+    n_val_subjects: int = 2,
+    seed: int = 42,
+) -> Iterator[CVFold]:
+    """Subject-independent AND stimulus-disjoint CV.
+
+    Subjects are shuffled into ``n_subject_groups`` groups. For each subject
+    group G and story fold K:
+      - test:  subjects in G, trials whose content group is in K
+      - val:   ``n_val_subjects`` random subjects outside G, content in K
+               (unseen subjects on unseen stories, like the test set)
+      - train: all other subjects, content NOT in K
+
+    Every usable trial of every subject is tested exactly once across the
+    ``n_subject_groups * len(story_folds)`` folds. Trials whose
+    ``content_group`` is None (e.g. DTU single-talker trials) are dropped.
+    """
+    rng = np.random.default_rng(seed)
+    subjects = sorted({t.subject_id for t in trials})
+    order = [subjects[i] for i in rng.permutation(len(subjects))]
+    subject_groups = [sorted(g) for g in np.array_split(np.array(order, dtype=object), n_subject_groups)]
+
+    by_subj: dict[str, list[tuple[int, int]]] = {}
+    for i, t in enumerate(trials):
+        g = content_group(t)
+        if g is not None:
+            by_subj.setdefault(t.subject_id, []).append((i, g))
+
+    for gi, test_subjs in enumerate(subject_groups):
+        rest = [s for s in subjects if s not in test_subjs]
+        for k, fold_groups in enumerate(story_folds):
+            held_out = set(fold_groups)
+            val_subjs = sorted(rest[j] for j in rng.choice(len(rest), n_val_subjects, replace=False))
+            train_subjs = [s for s in rest if s not in val_subjs]
+
+            def pick(subjs, inside):
+                return [i for s in subjs for i, g in by_subj.get(s, []) if (g in held_out) == inside]
+
+            yield CVFold(
+                fold_id=f"sgso_g{gi}_k{k}",
+                train_idx=pick(train_subjs, inside=False),
+                val_idx=pick(val_subjs, inside=True),
+                test_idx=pick(test_subjs, inside=True),
+                meta={
+                    "strategy": "subject_group_story_out",
+                    "test_subjects": list(test_subjs),
+                    "val_subjects": val_subjs,
+                    "held_out_content_groups": sorted(held_out),
+                },
+            )
+
+
+def assert_story_disjoint_fold_integrity(
+    trials: Sequence[Trial], fold: CVFold, content_group=dtu_content_group,
+) -> None:
+    """Check a subject_group_story_out fold: no subject shared between
+    train/val/test, and no content group shared between train and val/test.
+    """
+    def _subjects(idx):
+        return {trials[i].subject_id for i in idx}
+
+    def _groups(idx):
+        return {content_group(trials[i]) for i in idx}
+
+    tr_s, va_s, te_s = _subjects(fold.train_idx), _subjects(fold.val_idx), _subjects(fold.test_idx)
+    for name, a, b in [("train/val", tr_s, va_s), ("train/test", tr_s, te_s), ("val/test", va_s, te_s)]:
+        if a & b:
+            raise AssertionError(f"[{fold.fold_id}] {name} subject overlap: {a & b}")
+    tr_g = _groups(fold.train_idx)
+    for name, idx in [("val", fold.val_idx), ("test", fold.test_idx)]:
+        shared = tr_g & _groups(idx)
+        if shared:
+            raise AssertionError(f"[{fold.fold_id}] train/{name} content-group overlap: {shared}")
+
+
+# ======================================================================== #
 #  Defense-in-depth integrity check for LOSO folds
 # ======================================================================== #
 
@@ -546,4 +659,5 @@ CV_STRATEGIES = {
     "cross_condition": cross_condition,
     "loso": leave_one_subject_out,
     "strict_si_story": strict_subject_independent_story_disjoint,
+    "dtu_subject_group_story_out": subject_group_story_out,
 }
