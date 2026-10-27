@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Literal, Optional
 import numpy as np
 import scipy.io
 from .base import BaseDataset, Trial
@@ -71,6 +71,10 @@ class DTUDataset(BaseDataset):
         kept only for backward compatibility with existing callers that
         don't pass this argument; callers doing anything with ``audio_a``/
         ``audio_b`` (e.g. TRF training) should always pass a ``preprocess``.
+    envelope_method : {"hilbert", "powerlaw_subbands"}
+        Speech-envelope extraction, see :func:`aad_xai.data.kul_dataset._load_wav_envelope`.
+        Envelopes are cached per (WAV, method, rate, band) for the lifetime of
+        the dataset: every DTU subject hears the same stimuli.
     """
 
     def __init__(
@@ -80,6 +84,7 @@ class DTUDataset(BaseDataset):
         load_audio: bool = True,
         n_eeg_channels: int = _N_EEG_CHANNELS,
         preprocess: Optional[PreprocessConfig] = None,
+        envelope_method: Literal["hilbert", "powerlaw_subbands"] = "hilbert",
     ):
         self.root = Path(root)
         if audio_dir is None:
@@ -91,6 +96,8 @@ class DTUDataset(BaseDataset):
         self.load_audio = load_audio
         self.n_eeg_channels = n_eeg_channels
         self.preprocess = preprocess
+        self.envelope_method = envelope_method
+        self._env_cache: dict[tuple, np.ndarray] = {}
 
     def trials(self) -> Iterator[Trial]:
         eeg_dir = self.root / "eeg_new"
@@ -106,6 +113,8 @@ class DTUDataset(BaseDataset):
                 self.n_eeg_channels,
                 self.audio_dir if self.load_audio else None,
                 self.preprocess,
+                envelope_method=self.envelope_method,
+                env_cache=self._env_cache,
             )
 
     # ------------------------------------------------------------------
@@ -115,8 +124,19 @@ class DTUDataset(BaseDataset):
         n_eeg_channels: int,
         audio_dir: Optional[Path],
         preprocess: Optional[PreprocessConfig] = None,
+        envelope_method: Literal["hilbert", "powerlaw_subbands"] = "hilbert",
+        env_cache: Optional[dict] = None,
     ) -> Iterator[Trial]:
         subject_id = mat_path.stem  # e.g. "S1"
+        cache = {} if env_cache is None else env_cache
+
+        def envelope(wav: Path, sr: int, low_hz: float, high_hz: float) -> np.ndarray:
+            key = (wav.name, envelope_method, sr, low_hz, high_hz)
+            if key not in cache:
+                cache[key] = _load_wav_envelope(
+                    wav, target_sfreq=float(sr), low_hz=low_hz, high_hz=high_hz, method=envelope_method
+                )
+            return cache[key].copy()  # callers own their array; the cache stays pristine
 
         mat = scipy.io.loadmat(str(mat_path), squeeze_me=False)
         d0 = mat["data"][0, 0]
@@ -193,12 +213,8 @@ class DTUDataset(BaseDataset):
                         else:
                             audio_sr = 64
                             low_hz, high_hz = 1.0, 8.0
-                        audio_a = _load_wav_envelope(
-                            wav_a, target_sfreq=float(audio_sr), low_hz=low_hz, high_hz=high_hz
-                        )
-                        audio_b = _load_wav_envelope(
-                            wav_b, target_sfreq=float(audio_sr), low_hz=low_hz, high_hz=high_hz
-                        )
+                        audio_a = envelope(wav_a, audio_sr, low_hz, high_hz)
+                        audio_b = envelope(wav_b, audio_sr, low_hz, high_hz)
                         if preprocess is not None:
                             # Independent resampling of EEG (from event-sample counts)
                             # and audio (from WAV duration) can differ by a handful of

@@ -41,17 +41,32 @@ class TestDtuDatasetUsesEnvelopeBand:
             n_out = round(eeg.shape[1] * cfg.sfreq_out / sfreq_in)
             return np.zeros((eeg.shape[0], n_out), dtype=np.float32), float(cfg.sfreq_out)
 
-        def fake_load_env(wav_path, target_sfreq=64.0, low_hz=1.0, high_hz=8.0, **kw):
+        def fake_load_env(wav_path, target_sfreq=64.0, low_hz=1.0, high_hz=8.0, method="hilbert"):
             calls["env"].append((low_hz, high_hz))
-            return np.zeros(int(10 * target_sfreq), dtype=np.float32)
+            calls.setdefault("method", []).append(method)
+            return np.arange(int(10 * target_sfreq), dtype=np.float32)
 
         pp_mod.preprocess_eeg = fake_preprocess_eeg
         monkeypatch.setattr(dtu_mod, "_load_wav_envelope", fake_load_env)
         return calls
 
-    def _load(self, tmp_path, monkeypatch, cfg):
-        _setup_dataset(tmp_path, monkeypatch, sfreq=512.0, n_samples=4096, onset=100, offset=1124)
-        return list(DTUDataset(root=tmp_path, preprocess=cfg).trials())
+    def _load(self, tmp_path, monkeypatch, cfg, n_subjects=1, **kw):
+        eeg_dir, _ = _setup_dataset(tmp_path, monkeypatch, sfreq=512.0, n_samples=4096, onset=100, offset=1124)
+        for s in range(2, n_subjects + 1):
+            (eeg_dir / f"S{s}.mat").write_bytes(b"")  # loadmat is faked; same trial per subject
+        return list(DTUDataset(root=tmp_path, preprocess=cfg, **kw).trials())
+
+    def test_envelope_method_is_forwarded(self, tmp_path, monkeypatch, spies):
+        self._load(tmp_path, monkeypatch, PreprocessConfig(reref=None), envelope_method="powerlaw_subbands")
+        assert spies["method"] == ["powerlaw_subbands", "powerlaw_subbands"]
+
+    def test_envelopes_cached_across_subjects(self, tmp_path, monkeypatch, spies):
+        trials = self._load(tmp_path, monkeypatch, PreprocessConfig(reref=None), n_subjects=3)
+        assert [t.subject_id for t in trials] == ["S1", "S2", "S3"]
+        assert len(spies["env"]) == 2  # one call per WAV, not per subject
+        np.testing.assert_array_equal(trials[0].audio_a, trials[2].audio_a)
+        trials[0].audio_a[:] = -1.0  # mutating one trial must not leak into others
+        assert trials[1].audio_a[0] != -1.0
 
     def test_default_uses_eeg_band_for_envelope(self, tmp_path, monkeypatch, spies):
         self._load(tmp_path, monkeypatch, PreprocessConfig(reref=None))
