@@ -189,6 +189,68 @@ Notes
   S10/S17). Not comparable to the within-subject 0.6328 above.
 ----------------------------------------------------------------------
 
+----------------------------------------------------------------------
+Entry date: 2026-10-27
+Experiment: Story-disjoint round 1 — SGAT base vs. 50%-overlap training windows vs. tuned TRF
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v5.py (Kaggle kernel
+  dulanamanjitha/story-disjoint-v5-round1, code at commit 949f485)
+- story_disjoint_v5.json (Kaggle output; per-fold, per-subject counts; untracked)
+
+Method / Protocol
+- CV: subject_group_story_out (seed 42): 6 subject groups of 3 x 3 story folds
+  (content groups 1 / 2 / 3+4). Train = other subjects on the other stories;
+  2 val subjects scored on the held-out stories; test subjects scored on the
+  held-out stories only. Every two-talker trial tested exactly once (600
+  windows per subject); integrity asserted for all 18 folds.
+- StimulusGAT: v4 config unchanged, seed 42. Arms: base (non-overlapping 5 s
+  training windows) and overlap (2.5 s hop: 4870 -> 9253 windows in fold 1).
+  Epoch chosen by pooled val accuracy.
+- TRF: same ridge grid as the robustness entry, chosen by val correlation;
+  extra arms chosen by val accuracy and raw EEG with lags 0-0.25 vs 0-0.4 s.
+- Pre-registered rule: keep overlap iff mean pooled val accuracy beats base.
+
+Results (mean ± std across 18 test subjects; each pooled over its 3 folds)
+- TRF tuned (val corr):    0.5984 ± 0.0399
+- TRF tuned (val acc):     0.5940;  raw lags 0-0.4 s 0.5963, 0-0.25 s 0.5938
+- SGAT base:               0.6265 ± 0.0498   shifted control 0.5099
+- SGAT overlap:            0.6305 ± 0.0429   shifted control 0.5097
+- SGAT base − TRF:     +0.0281, better on 12/18, Wilcoxon p=0.024
+- SGAT overlap − TRF:  +0.0321, better on 16/18, p=0.0012
+- Overlap − base:      +0.0040, better on 8/18, p=0.78
+- TRF lags 0.4 − 0.25: +0.0025, 10/18, p=0.49
+- Val accuracy (mean over folds): base 0.6431, overlap 0.6476 (overlap higher in
+  11 folds, lower in 6, tied in 1) -> overlap KEPT by the pre-registered rule
+- Per held-out story fold (pooled): TRF / base / overlap
+  G1 0.605/0.624/0.628, G2 0.598/0.639/0.633, G3+4 0.591/0.620/0.631
+- All 18 subjects above chance with overlap (per-subject binomial p<0.05,
+  windows treated as independent)
+
+Comparison with plain LOSO (same 18 subjects, paired)
+- SGAT story-disjoint base − plain LOSO (seeds 43/44 mean): +0.0000, p=0.95
+- TRF story-disjoint − plain LOSO tuned TRF: −0.0004, p=0.86
+- SGAT − TRF gap: 0.0277 (LOSO) vs 0.0281 (story-disjoint)
+
+Notes
+- Hearing other subjects' EEG for the same stories did not inflate plain LOSO:
+  both models score the same when train and test share no stories, with ~25%
+  less training data per fold (13 vs 16 subjects, 2/3 of the stories). The
+  SGAT advantage over a tuned linear decoder survives the stricter protocol.
+- Doubling the training windows by overlap did not measurably help (test +0.4
+  points, n.s.). It is kept per the rule, but the val gain is also small and
+  noisy. Read with the point above: more windows of the same kind are not the
+  limiting factor at this accuracy.
+- Lags beyond 250 ms add nothing measurable to the TRF (consistent with the
+  synthetic delay sweep).
+- Shifted control is slightly above 0.5 (0.510; 12/18 subjects, Wilcoxon
+  p=0.11; pooled binomial p=0.04 but windows within a trial are not
+  independent). Plain LOSO gave 0.496–0.504. Not significant at subject level;
+  a possible small talker-identity cue in the shifted envelopes. Watch it in
+  later rounds.
+- Single seed; within-subject seed SD was 0.014 under LOSO, so the 0.004
+  overlap−base difference is well inside seed noise.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
