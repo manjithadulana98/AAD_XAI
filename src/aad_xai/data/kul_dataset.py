@@ -230,7 +230,7 @@ class KULeuvenDataset(BaseDataset):
                 right_wav_name = str(stim[1, 0].flat[0])   # right-ear stimulus
 
                 n_times = eeg.shape[1]
-                bp = self.preprocess.bandpass_hz if self.preprocess else (1.0, 8.0)
+                bp = self.preprocess.envelope_band if self.preprocess else (1.0, 8.0)
 
                 left_env = self._get_envelope(
                     stimuli_dir / left_wav_name, sfreq_out, n_times, bp

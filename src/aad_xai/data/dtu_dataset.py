@@ -189,7 +189,7 @@ class DTUDataset(BaseDataset):
                     if wav_a.exists() and wav_b.exists():
                         if preprocess is not None:
                             audio_sr = int(round(sfreq_out))
-                            low_hz, high_hz = preprocess.bandpass_hz
+                            low_hz, high_hz = preprocess.envelope_band
                         else:
                             audio_sr = 64
                             low_hz, high_hz = 1.0, 8.0

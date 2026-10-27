@@ -10,6 +10,13 @@ class PreprocessConfig:
     sfreq_out: int = 64
     bandpass_hz: tuple[float, float] = (1.0, 8.0)  # envelope-tracking band
     reref: Optional[Literal["average"]] = "average"
+    # Speech-envelope band. None = same as the EEG band (historical behavior);
+    # set it to widen the EEG band without also widening the envelope band.
+    envelope_bandpass_hz: Optional[tuple[float, float]] = None
+
+    @property
+    def envelope_band(self) -> tuple[float, float]:
+        return self.envelope_bandpass_hz if self.envelope_bandpass_hz is not None else self.bandpass_hz
 
 
 @dataclass(frozen=True)
