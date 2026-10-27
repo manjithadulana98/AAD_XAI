@@ -72,12 +72,16 @@ def _speech_like_envelopes(rng: np.random.Generator, n: int) -> np.ndarray:
     return env / env.mean(axis=-1, keepdims=True)
 
 
-def make_task_tracking(rng, n, snr_db, spatial):
-    """Label carried only by temporal covariance (phase-locked response)."""
+def make_task_tracking(rng, n, snr_db, spatial, delay=0):
+    """Label carried only by temporal covariance (phase-locked response).
+
+    ``delay`` (samples) shifts the whole response later, probing how far
+    apart in time EEG and speech can be and still be matched.
+    """
     env = np.stack([_speech_like_envelopes(rng, n), _speech_like_envelopes(rng, n)], axis=1)  # (n, 2, T)
     y = rng.integers(0, 2, size=n)
     att = env[np.arange(n), y]                                           # (n, T)
-    k = _trf_kernel()
+    k = np.concatenate([np.zeros(delay), _trf_kernel()])                 # (delay + KERNEL_LEN,)
     resp = np.stack([np.convolve(a - a.mean(), k)[:T] for a in att])     # (n, T), causal
     resp = _zscore(resp)
     noise_std = 10 ** (-snr_db / 20)
@@ -109,20 +113,20 @@ TASKS = {"tracking": make_task_tracking, "spectral": make_task_spectral}
 
 # ---- TRF baseline: backward ridge decoder, lagged EEG -> envelope ----
 
-def _lagged(eeg: np.ndarray) -> np.ndarray:
-    """(n, C, T) -> (n, T, C*KERNEL_LEN); EEG lags the stimulus, so use eeg[t+lag]."""
+def _lagged(eeg: np.ndarray, n_lags: int = KERNEL_LEN) -> np.ndarray:
+    """(n, C, T) -> (n, T, C*n_lags); EEG lags the stimulus, so use eeg[t+lag]."""
     n, C, _ = eeg.shape
-    out = np.zeros((n, T, C * KERNEL_LEN), dtype=np.float64)
-    for lag in range(KERNEL_LEN):
-        out[:, : T - lag, lag::KERNEL_LEN] = eeg[:, :, lag:].transpose(0, 2, 1)
+    out = np.zeros((n, T, C * n_lags), dtype=np.float64)
+    for lag in range(n_lags):
+        out[:, : T - lag, lag::n_lags] = eeg[:, :, lag:].transpose(0, 2, 1)
     return out
 
 
-def trf_accuracy(train, test, alphas=(1e-1, 1e1, 1e3, 1e5)) -> float:
+def trf_accuracy(train, test, alphas=(1e-1, 1e1, 1e3, 1e5), n_lags=KERNEL_LEN) -> float:
     eeg_tr, env_tr, y_tr = train
     eeg_te, env_te, y_te = test
     n_val = len(y_tr) // 5
-    X = _lagged(eeg_tr)
+    X = _lagged(eeg_tr, n_lags)
     target = _zscore(env_tr[np.arange(len(y_tr)), y_tr])
 
     def fit(Xf, tf, alpha):
@@ -138,7 +142,7 @@ def trf_accuracy(train, test, alphas=(1e-1, 1e1, 1e3, 1e5)) -> float:
         alphas,
         key=lambda a: acc(fit(X[n_val:], target[n_val:], a), X[:n_val], env_tr[:n_val], y_tr[:n_val]),
     )
-    return acc(fit(X, target, best_alpha), _lagged(eeg_te), env_te, y_te)
+    return acc(fit(X, target, best_alpha), _lagged(eeg_te, n_lags), env_te, y_te)
 
 
 # ---- StimulusGAT ----
@@ -181,40 +185,48 @@ def main() -> int:
     p.add_argument("--epochs", type=int, default=30)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--tasks", nargs="+", default=list(TASKS), choices=list(TASKS))
+    p.add_argument("--delay-ms", type=float, nargs="+", default=[0.0],
+                   help="tracking task only: extra response latency; TRF lags are widened to cover it")
     p.add_argument("--out", type=Path, default=Path("results/diag_sgat_synthetic_dissociation.json"))
     args = p.parse_args()
 
     results = []
     for task in args.tasks:
-        for snr in args.snr_db:
-            rng = np.random.default_rng(0)
-            spatial = rng.standard_normal(N_CHANNELS)
-            train = TASKS[task](rng, args.n_train, snr, spatial)
-            test = TASKS[task](rng, args.n_test, snr, spatial)
-
-            t0 = time.time()
-            trf = trf_accuracy(train, test)
-            sgat_runs = [sgat_accuracy(train, test, seed=s, epochs=args.epochs, lr=args.lr) for s in range(args.seeds)]
-            sgat_test = [r[0] for r in sgat_runs]
-            sgat_train_final = [r[1][-1] for r in sgat_runs]
-            row = {
-                "task": task, "snr_db": snr, "trf_test_acc": trf,
-                "sgat_test_acc_mean": float(np.mean(sgat_test)), "sgat_test_acc_std": float(np.std(sgat_test)),
-                "sgat_train_acc_final_mean": float(np.mean(sgat_train_final)),
-                "sgat_test_acc_per_seed": sgat_test,
-                "sgat_train_curves": [r[1] for r in sgat_runs],
-            }
-            results.append(row)
-            print(f"[{task:8s} snr={snr:+.0f}dB]  TRF={trf:.3f}  "
-                  f"SGAT test={row['sgat_test_acc_mean']:.3f}+/-{row['sgat_test_acc_std']:.3f}  "
-                  f"SGAT train(final)={row['sgat_train_acc_final_mean']:.3f}  ({time.time()-t0:.0f}s)",
-                  flush=True)
+        for delay_ms in (args.delay_ms if task == "tracking" else [0.0]):
+            delay = int(round(delay_ms * SFREQ / 1000))
+            kw = {"delay": delay} if task == "tracking" else {}
+            for snr in args.snr_db:
+                rng = np.random.default_rng(0)
+                spatial = rng.standard_normal(N_CHANNELS)
+                train = TASKS[task](rng, args.n_train, snr, spatial, **kw)
+                test = TASKS[task](rng, args.n_test, snr, spatial, **kw)
+                results.append(_run_condition(task, snr, delay_ms, train, test, delay + KERNEL_LEN, args))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps({"config": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()},
                                     "results": results}, indent=2))
     print(f"Wrote {args.out}")
     return 0
+
+
+def _run_condition(task, snr, delay_ms, train, test, n_lags, args):
+    t0 = time.time()
+    trf = trf_accuracy(train, test, n_lags=n_lags)
+    sgat_runs = [sgat_accuracy(train, test, seed=s, epochs=args.epochs, lr=args.lr) for s in range(args.seeds)]
+    sgat_test = [r[0] for r in sgat_runs]
+    sgat_train_final = [r[1][-1] for r in sgat_runs]
+    row = {
+        "task": task, "snr_db": snr, "delay_ms": delay_ms, "trf_test_acc": trf,
+        "sgat_test_acc_mean": float(np.mean(sgat_test)), "sgat_test_acc_std": float(np.std(sgat_test)),
+        "sgat_train_acc_final_mean": float(np.mean(sgat_train_final)),
+        "sgat_test_acc_per_seed": sgat_test,
+        "sgat_train_curves": [r[1] for r in sgat_runs],
+    }
+    print(f"[{task:8s} snr={snr:+.0f}dB delay={delay_ms:.0f}ms]  TRF={trf:.3f}  "
+          f"SGAT test={row['sgat_test_acc_mean']:.3f}+/-{row['sgat_test_acc_std']:.3f}  "
+          f"SGAT train(final)={row['sgat_train_acc_final_mean']:.3f}  ({time.time()-t0:.0f}s)",
+          flush=True)
+    return row
 
 
 if __name__ == "__main__":
