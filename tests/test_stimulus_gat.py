@@ -1,6 +1,7 @@
 """Tests for the stimulus-conditioned GAT model components (StimulusGAT)."""
 from __future__ import annotations
 
+import pytest
 import torch
 
 import math
@@ -408,3 +409,51 @@ class TestStimulusGAT:
         logits, logits_shifted = model(eeg, env), model(eeg, env_shifted)
         assert not torch.allclose(logits[:, 0], logits_shifted[:, 0], atol=1e-4)
         assert torch.allclose(logits[:, 1], logits_shifted[:, 1], atol=1e-5)
+
+
+class TestStimulusGATMultiBandSpeech:
+    """speech_bands=K: each candidate's speech is K sub-band envelopes (B, 2, K, T)."""
+
+    K = 5
+
+    def test_default_is_single_band(self):
+        model = _make_stimulus_gat()
+        assert model.speech_bands == 1
+        assert model.speech_encoder.net[0].weight.shape[1] == 1  # Conv1d(1, hidden, k)
+
+    def test_encoder_reads_all_bands(self):
+        enc = SharedSpeechEncoder(embed_dim=6, hidden=4, dropout=0.0, in_channels=self.K)
+        assert enc.net[0].weight.shape[1] == self.K
+        assert enc(torch.randn(3, self.K, 64)).shape == (3, 6, 64)
+        with pytest.raises(ValueError):
+            enc(torch.randn(3, 64))  # single-band input to a K-band encoder
+
+    def test_forward_shape(self):
+        model = _make_stimulus_gat(speech_bands=self.K)
+        assert model(torch.randn(3, 6, 128), torch.randn(3, 2, self.K, 128)).shape == (3, 2)
+
+    def test_wrong_env_shape_raises(self):
+        with pytest.raises(ValueError):
+            _make_stimulus_gat(speech_bands=self.K)(torch.randn(2, 6, 128), torch.randn(2, 2, 128))
+        with pytest.raises(ValueError):
+            _make_stimulus_gat()(torch.randn(2, 6, 128), torch.randn(2, 2, self.K, 128))
+
+    def test_shared_weight_symmetry(self):
+        model = _make_stimulus_gat(speech_bands=self.K)
+        model.eval()
+        eeg, env = torch.randn(3, 6, 128), torch.randn(3, 2, self.K, 128)
+        logits, swapped = model(eeg, env), model(eeg, env[:, [1, 0]])
+        assert torch.allclose(swapped[:, 0], logits[:, 1], atol=1e-5)
+        assert torch.allclose(swapped[:, 1], logits[:, 0], atol=1e-5)
+
+    def test_one_band_of_one_candidate_moves_only_its_score(self):
+        model = _make_stimulus_gat(speech_bands=self.K)
+        with torch.no_grad():
+            model.film.proj.weight.add_(torch.randn_like(model.film.proj.weight))
+        model.eval()
+        eeg, env = torch.randn(3, 6, 128), torch.randn(3, 2, self.K, 128)
+        env2 = env.clone()
+        env2[:, 0, 2] = torch.roll(env[:, 0, 2], shifts=40, dims=-1)
+        logits, logits2 = model(eeg, env), model(eeg, env2)
+        assert not torch.allclose(logits[:, 0], logits2[:, 0], atol=1e-4)
+        assert torch.allclose(logits[:, 1], logits2[:, 1], atol=1e-5)

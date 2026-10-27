@@ -13,10 +13,12 @@ _N_EEG_CHANNELS = 64
 
 
 def _match_length(env: np.ndarray, target_len: int) -> np.ndarray:
-    """Truncate or zero-pad a 1D envelope to exactly *target_len* samples."""
-    if len(env) >= target_len:
-        return env[:target_len]
-    return np.pad(env, (0, target_len - len(env))).astype(np.float32, copy=False)
+    """Truncate or zero-pad an envelope, (T,) or (K, T), to exactly *target_len* samples along time."""
+    n = env.shape[-1]
+    if n >= target_len:
+        return env[..., :target_len]
+    pad = [(0, 0)] * (env.ndim - 1) + [(0, target_len - n)]
+    return np.pad(env, pad).astype(np.float32, copy=False)
 
 
 class DTUDataset(BaseDataset):
@@ -71,7 +73,7 @@ class DTUDataset(BaseDataset):
         kept only for backward compatibility with existing callers that
         don't pass this argument; callers doing anything with ``audio_a``/
         ``audio_b`` (e.g. TRF training) should always pass a ``preprocess``.
-    envelope_method : {"hilbert", "powerlaw_subbands"}
+    envelope_method : {"hilbert", "powerlaw_subbands", "powerlaw_subbands_multi"}
         Speech-envelope extraction, see :func:`aad_xai.data.kul_dataset._load_wav_envelope`.
         Envelopes are cached per (WAV, method, rate, band) for the lifetime of
         the dataset: every DTU subject hears the same stimuli.
@@ -84,7 +86,7 @@ class DTUDataset(BaseDataset):
         load_audio: bool = True,
         n_eeg_channels: int = _N_EEG_CHANNELS,
         preprocess: Optional[PreprocessConfig] = None,
-        envelope_method: Literal["hilbert", "powerlaw_subbands"] = "hilbert",
+        envelope_method: Literal["hilbert", "powerlaw_subbands", "powerlaw_subbands_multi"] = "hilbert",
     ):
         self.root = Path(root)
         if audio_dir is None:
@@ -124,7 +126,7 @@ class DTUDataset(BaseDataset):
         n_eeg_channels: int,
         audio_dir: Optional[Path],
         preprocess: Optional[PreprocessConfig] = None,
-        envelope_method: Literal["hilbert", "powerlaw_subbands"] = "hilbert",
+        envelope_method: Literal["hilbert", "powerlaw_subbands", "powerlaw_subbands_multi"] = "hilbert",
         env_cache: Optional[dict] = None,
     ) -> Iterator[Trial]:
         subject_id = mat_path.stem  # e.g. "S1"

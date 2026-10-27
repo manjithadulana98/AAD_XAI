@@ -77,7 +77,8 @@ class WindowedEEGAudioDataset(Dataset):
 
     Returns ``(eeg_window, env_window, label)`` where:
       - eeg_window: (C, T)
-      - env_window: (2, T)
+      - env_window: (2, T), or (2, K, T) when the trials carry (K, T)
+        multi-band envelopes
       - label: int (0/1)
 
     Parameters
@@ -122,8 +123,8 @@ class WindowedEEGAudioDataset(Dataset):
         for t_idx, trial in enumerate(self.trials):
             n_times = min(
                 trial.eeg.shape[1],
-                len(trial.audio_a),
-                len(trial.audio_b),
+                trial.audio_a.shape[-1],
+                trial.audio_b.shape[-1],
             )
             wins = make_windows(
                 n_times=n_times,
@@ -156,11 +157,11 @@ class WindowedEEGAudioDataset(Dataset):
             eeg = (eeg - mean) / (std + 1e-8)
         env = np.stack(
             [
-                trial.audio_a[win.start:win.stop],
-                trial.audio_b[win.start:win.stop],
+                trial.audio_a[..., win.start:win.stop],
+                trial.audio_b[..., win.start:win.stop],
             ],
             axis=0,
-        )
+        )  # (2, T), or (2, K, T) for multi-band envelopes
 
         x = torch.as_tensor(eeg, dtype=torch.float32)
         e = torch.as_tensor(env, dtype=torch.float32)

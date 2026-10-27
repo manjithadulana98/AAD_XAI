@@ -26,7 +26,7 @@ def _load_wav_envelope(
     target_sfreq: float = 64.0,
     low_hz: float = 1.0,
     high_hz: float = 8.0,
-    method: Literal["hilbert", "powerlaw_subbands"] = "hilbert",
+    method: Literal["hilbert", "powerlaw_subbands", "powerlaw_subbands_multi"] = "hilbert",
 ) -> np.ndarray:
     """Read a WAV file and return a bandpass-filtered speech envelope.
 
@@ -37,6 +37,10 @@ def _load_wav_envelope(
 
         - "powerlaw_subbands": Biesmans-style powerlaw-subband envelope extraction
             using a fixed gammatone filterbank (see :func:`aad_xai.data.speech_features.powerlaw_subbands_envelope`).
+
+        - "powerlaw_subbands_multi": the same 15 sub-bands kept separate, each
+            z-scored; returns shape (15, T) instead of (T,) (see
+            :func:`aad_xai.data.speech_features.powerlaw_subband_envelopes`).
     """
     sr, audio = scipy.io.wavfile.read(str(wav_path))
 
@@ -54,6 +58,16 @@ def _load_wav_envelope(
         from .speech_features import powerlaw_subbands_envelope
 
         return powerlaw_subbands_envelope(
+            audio,
+            int(sr),
+            target_sr=int(target_sfreq),
+            bandpass_hz=(float(low_hz), float(high_hz)),
+        )
+
+    if method == "powerlaw_subbands_multi":
+        from .speech_features import powerlaw_subband_envelopes
+
+        return powerlaw_subband_envelopes(  # (15, T)
             audio,
             int(sr),
             target_sr=int(target_sfreq),

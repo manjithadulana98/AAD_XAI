@@ -20,6 +20,9 @@ class SharedSpeechEncoder(nn.Module):
         Number of channels after the first conv layer.
     kernel_sizes : tuple[int, int]
     dropout : float
+    in_channels : int
+        Envelope channels per candidate: 1 for a single broadband envelope
+        (input (B, T)), K for K sub-band envelopes (input (B, K, T)).
     """
 
     def __init__(
@@ -28,11 +31,13 @@ class SharedSpeechEncoder(nn.Module):
         hidden: int = 8,
         kernel_sizes: tuple[int, int] = (9, 9),
         dropout: float = 0.3,
+        in_channels: int = 1,
     ):
         super().__init__()
         k1, k2 = kernel_sizes
+        self.in_channels = in_channels
         self.net = nn.Sequential(
-            nn.Conv1d(1, hidden, kernel_size=k1, padding=k1 // 2),
+            nn.Conv1d(in_channels, hidden, kernel_size=k1, padding=k1 // 2),
             nn.BatchNorm1d(hidden),
             nn.ELU(),
             nn.Dropout(dropout),
@@ -45,11 +50,15 @@ class SharedSpeechEncoder(nn.Module):
         """
         Parameters
         ----------
-        env : Tensor, shape (B, T)
+        env : Tensor, shape (B, T) if in_channels == 1, else (B, in_channels, T)
 
         Returns
         -------
         Tensor, shape (B, embed_dim, T) -- a sequence, not a pooled vector, so
         it can modulate EEG features time step by time step.
         """
-        return self.net(env.unsqueeze(1))  # (B, 1, T) -> (B, embed_dim, T)
+        if env.dim() == 2:
+            env = env.unsqueeze(1)                     # (B, 1, T)
+        if env.shape[1] != self.in_channels:
+            raise ValueError(f"expected {self.in_channels} envelope channels, got shape {tuple(env.shape)}")
+        return self.net(env)                           # (B, in_channels, T) -> (B, embed_dim, T)

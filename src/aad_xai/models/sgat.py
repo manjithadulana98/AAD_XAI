@@ -118,6 +118,11 @@ class StimulusGAT(nn.Module):
         Optional (n_channels, n_channels) electrode adjacency. If ``None``,
         the default distance-based k-NN (k=6) adjacency is built from
         ``config/dtu_channel_montage.csv`` via ``stgcn/adjacency.py``.
+    speech_bands : int
+        Envelope channels per candidate. 1 (default): one broadband envelope,
+        ``env`` of shape (B, 2, T). K > 1: K sub-band envelopes per candidate,
+        ``env`` of shape (B, 2, K, T), read jointly by the shared speech
+        encoder's first convolution.
     """
 
     def __init__(
@@ -132,8 +137,10 @@ class StimulusGAT(nn.Module):
         gat_hidden: int = 32,
         gat_heads: int = 4,
         dropout: float = 0.3,
+        speech_bands: int = 1,
     ):
         super().__init__()
+        self.speech_bands = speech_bands
         if adjacency is None:
             adjacency = _load_default_adjacency()
 
@@ -146,7 +153,9 @@ class StimulusGAT(nn.Module):
         self.node_fusion = NodeFeatureFusion(
             n_channels, in_features=temporal_features + freq_features, out_features=node_features,
         )
-        self.speech_encoder = SharedSpeechEncoder(embed_dim=speech_embed_dim, dropout=dropout)
+        self.speech_encoder = SharedSpeechEncoder(
+            embed_dim=speech_embed_dim, dropout=dropout, in_channels=speech_bands,
+        )
         self.film = TimeResolvedFiLM(speech_dim=speech_embed_dim, n_features=temporal_features)
         self.gat = CandidateConditionedGAT(
             n_channels=n_channels, in_features=node_features,
@@ -165,7 +174,8 @@ class StimulusGAT(nn.Module):
         Parameters
         ----------
         eeg : Tensor, shape (B, C, T)
-        env : Tensor, shape (B, 2, T) -- env[:, 0] = candidate A, env[:, 1] = candidate B
+        env : Tensor, shape (B, 2, T), or (B, 2, K, T) if speech_bands = K > 1
+            -- env[:, 0] = candidate A, env[:, 1] = candidate B
         return_attention_weights : bool
             If True, also return a dict with each candidate's GAT attention
             weights, shape (B, heads, N, N), for interpretability.
@@ -180,7 +190,12 @@ class StimulusGAT(nn.Module):
         f_feat = self.frequency_encoder(eeg)            # (B, C, F_f)
 
         # Both candidates in one batch: index k*B + b is candidate k of sample b.
-        speech = self.speech_encoder(env.transpose(0, 1).reshape(2 * B, T))  # (2B, D_s, T)
+        if self.speech_bands == 1 and env.dim() == 4 and env.shape[2] == 1:
+            env = env.squeeze(2)                                               # (B, 2, 1, T) -> (B, 2, T)
+        expected = (B, 2, T) if self.speech_bands == 1 else (B, 2, self.speech_bands, T)
+        if tuple(env.shape) != expected:
+            raise ValueError(f"env shape {tuple(env.shape)} != expected {expected}")
+        speech = self.speech_encoder(env.transpose(0, 1).reshape(2 * B, *env.shape[2:]))  # (2B, D_s, T)
         speech = speech.view(2, B, -1, T)                                      # (2, B, D_s, T)
         t_cond = torch.cat([self.film(h, speech[0]), self.film(h, speech[1])])  # (2B, C, F_t)
 
