@@ -291,6 +291,49 @@ Notes
   0.5 points; otherwise the simpler/previous setting stays.
 ----------------------------------------------------------------------
 
+----------------------------------------------------------------------
+Entry date: 2026-10-27
+Experiment: Story-disjoint round 3 — power-law sub-band speech envelope (TRF and StimulusGAT)
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v7.py (Kaggle kernel
+  dulanamanjitha/story-disjoint-v7-round3, code at commit 074ffe9)
+- story_disjoint_v7.json (Kaggle output; untracked). Compared offline with
+  rounds 1-2 (fold ids and meta verified identical for all 18 folds)
+
+Method / Protocol
+- Single factor: envelope_method="powerlaw_subbands" (15-band gammatone at
+  8 kHz, |x|^0.6, summed, 1-8 Hz, z-scored per trial) instead of the Hilbert
+  envelope. Still one envelope per talker; architecture unchanged.
+- TRF: 1-8 Hz EEG, same ridge grid/selection as round 1; compared with round
+  1's Hilbert TRF. StimulusGAT: 1-31 Hz EEG, 2.5 s hop, seed 42; compared with
+  round 2's wide_overlap.
+- Sanity check: power-law vs Hilbert envelope r = 0.829 on aske_story1_trial_1.
+- Pre-registered: SGAT keeps it iff val gain >= 0.005 and shift control at
+  chance; the TRF baseline uses whichever envelope has higher TRF val accuracy.
+
+Results (mean ± std across 18 test subjects)
+- TRF power-law:   0.6464 ± 0.0739  (Hilbert 0.5984)  +0.0480, 14/18, p=0.0008
+- SGAT power-law:  0.6503 ± 0.0610  (Hilbert 0.6276)  +0.0227, 14/18, p=0.0018
+- SGAT − TRF, both power-law:  +0.0039, better on 10/18, p=0.50
+- (SGAT − TRF, both Hilbert, round 2: +0.0292, 12/18, p=0.033)
+- Gain difference TRF − SGAT: +0.025, 11/18, p=0.074; per-subject gains
+  correlate only 0.24
+- Shift control: 0.5002 (9/18 above 0.5, p=0.78)
+- Val: TRF 0.5981 -> 0.6458 (higher in 16/18 folds); SGAT 0.6500 -> 0.6719
+  (+0.022, higher in 15/18) -> power-law KEPT for both models
+- TRF lag 0-400 vs 0-250 with power-law: +0.0037, p=0.40
+
+Notes
+- Best absolute accuracy so far: SGAT 0.650 on story-disjoint DTU, 5 s windows.
+- But the StimulusGAT advantage over the linear decoder disappears once both
+  get the better envelope (+2.9 -> +0.4 points, n.s.). Most likely, part of
+  StimulusGAT's earlier edge came from its speech encoder partly compensating
+  for a poor Hilbert envelope. A good input representation removes that edge.
+- Do NOT report SGAT power-law vs TRF Hilbert (+5.2 points) as the model's
+  gain: that mixes the envelope change with the model change.
+- TRF baseline for later rounds: power-law envelope, 1-8 Hz EEG.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
