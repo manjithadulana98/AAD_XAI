@@ -252,6 +252,45 @@ Notes
   overlap−base difference is well inside seed noise.
 ----------------------------------------------------------------------
 
+----------------------------------------------------------------------
+Entry date: 2026-10-27
+Experiment: Story-disjoint round 2 — EEG band 1-8 Hz -> 1-31 Hz (envelope kept at 1-8 Hz)
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v6.py (Kaggle kernel
+  dulanamanjitha/story-disjoint-v6-round2, code at commit fbcffbf)
+- story_disjoint_v6.json (Kaggle output; untracked). Compared offline with
+  round 1's story_disjoint_v5.json (fold ids, test/val subjects and held-out
+  stories verified identical for all 18 folds)
+
+Method / Protocol
+- Single factor vs round-1 "overlap" arm: PreprocessConfig(bandpass_hz=(1, 31),
+  envelope_bandpass_hz=(1, 8)), 64 Hz. Same folds, StimulusGAT config, seed 42,
+  2.5 s training hop. TRF baseline (1-8 Hz) reused from round 1.
+- Motivation: the frequency encoder's 8 bands span 1-32 Hz, but with 1-8 Hz
+  EEG the six bands above 8 Hz saw only filter roll-off.
+- Pre-registered rule: keep 1-31 Hz iff mean pooled val accuracy beats 0.6476
+  and the shift control is not above chance (Wilcoxon vs 0.5, p >= 0.05).
+
+Results (mean ± std across 18 test subjects)
+- SGAT wide (1-31 Hz):  0.6276 ± 0.0523   shifted 0.5077 (10/18 above 0.5, p=0.36)
+- SGAT round-1 overlap: 0.6305            shifted 0.5097
+- TRF (1-8 Hz):         0.5984
+- Wide − overlap: −0.0029, better on 7/18, Wilcoxon p=0.68
+- Wide − TRF:     +0.0292, better on 12/18, p=0.033
+- Val: 0.6500 vs 0.6476 (higher in 10 folds, lower in 8) -> KEEP by the rule
+
+Notes
+- Null result: alpha/beta EEG adds no measurable accuracy. The decodable
+  information this model uses sits in the 1-8 Hz tracking band.
+- The rule says keep, but the val margin (+0.24 points, 10 vs 8 folds) is noise.
+  The practical reason to keep 1-31 Hz is interpretability: the frequency-band
+  contributions CLAUDE.md asks for are only meaningful if the bands carry
+  signal. The shift control did not rise, so no EEG-only shortcut appeared.
+- Method lesson: a "beats" rule with no margin turns ties into decisions.
+  From round 3 on, a change is kept only if val accuracy improves by at least
+  0.5 points; otherwise the simpler/previous setting stays.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
