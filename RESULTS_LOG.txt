@@ -334,6 +334,80 @@ Notes
 - TRF baseline for later rounds: power-law envelope, 1-8 Hz EEG.
 ----------------------------------------------------------------------
 
+Entry date: 2026-10-28
+Experiment: Story-disjoint round 4 — multi-band speech input (15 sub-band envelopes, TRF and StimulusGAT)
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v8.py (Kaggle kernel
+  dulanamanjitha/story-disjoint-v8-round4, code at commit 92d7aca)
+- story_disjoint_v8.json (Kaggle output; untracked). Compared offline with
+  round 3 (fold ids and meta verified identical for all 18 folds)
+
+Method / Protocol
+- Single factor: envelope_method="powerlaw_subbands_multi". Same 15
+  power-law gammatone bands as round 3, but not summed: each band is
+  z-scored, giving env (2, 15, T).
+- StimulusGAT(speech_bands=15): the shared speech encoder's first conv reads
+  all 15 bands (architecture change approved by the user).
+- TRF: multi-output backward ridge (one shared alpha); decision = mean over
+  bands of corr(reconstruction_k, candidate band k).
+- Everything else as in round 3.
+- Sanity checks passed:
+  - the multi-output TRF at K=1 reproduces the single-band TRF;
+  - the z-scored sum of the raw bands matches the round-3 envelope (r > 0.999).
+- Pre-registered:
+  - SGAT keeps multi-band iff val >= 0.6719 + 0.005 AND the shift control is
+    at chance;
+  - the TRF baseline is whichever of {summed, multi} has the higher TRF val acc.
+
+Results (mean across 18 test subjects, each pooled over its 3 folds)
+- TRF multi-band 0.6573 vs summed 0.6464: +0.0109, 13/18, p=0.0065.
+  - Val 0.6517 vs 0.6458 (higher in 13/18 folds).
+  - -> multi-band TRF is the NEW BASELINE.
+- SGAT multi-band 0.6779 vs summed 0.6503: +0.0276, 12/18, p=0.029.
+  - Val 0.6831 vs 0.6719 (+0.011).
+- SGAT multi vs TRF multi: +0.0205, 12/18, p=0.19.
+- SHIFT CONTROL (envelopes rolled by 2.5 s): 0.5449 vs 0.5002 in round 3
+  (rise p=0.047; vs chance p=0.139).
+  - Folds with test-shift >= 0.6: sgso_g3_k0 0.825, sgso_g3_k1 0.837,
+    sgso_g4_k1 0.657. In these folds shifted accuracy ~= real accuracy, and
+    val was 0.84-0.87 at epoch 1.
+  - Subjects affected (shifted acc): S3 0.68, S6 0.74, S11 0.61, S14 0.74.
+- Excluding those 3 folds (post hoc):
+  - SGAT multi - SGAT sum: -0.005, p=0.92;
+  - SGAT multi - TRF multi: -0.013, p=0.46;
+  - val: multi 0.6652 vs sum 0.6667.
+
+Decision
+- The letter of the rule passes: val +1.1 points, shift vs chance p=0.14.
+- But the shift control shows the SGAT gain is a SHORTCUT, not better envelope
+  tracking:
+  - in 3 folds the model predicts as well with misaligned speech as with
+    aligned speech;
+  - with those folds removed, the gain is zero.
+  - The subject-level Wilcoxon was underpowered for a shortcut confined to a
+    few subjects and stories. Validation itself was contaminated, because the
+    val subjects of those folds benefited too.
+- -> multi-band input REJECTED for StimulusGAT in its current form. SGAT
+  stays on the summed power-law envelope (round 3).
+- Kept: the multi-band TRF as the baseline.
+- Standing: SGAT (r3) 0.6503 vs TRF multi 0.6573: -0.0071, 9/18, p=0.73
+  (tie; the TRF is nominally ahead).
+
+Notes
+- Likely mechanism (hypothesis, untested): the 15-band input lets the speech
+  encoder tell the male talker from the female one regardless of timing.
+  Combined with any EEG cue that correlates with the attended talker in some
+  stories (e.g. 1-31 Hz alpha lateralisation via the attended side), the model
+  can score talker identity instead of tracking. The summed envelope (r3) gave
+  shift 0.500, so that input did not allow it.
+- Lesson for the protocol: also check per-fold shift accuracy (e.g. any fold
+  with shift >= 0.6 is a flag), not only the subject-level test vs 0.5.
+- Fixes would need sign-off, because each is a data or architecture change:
+  - talker-invariant band input (per-window band normalisation, or removing
+    the band profile);
+  - a training-time shift-negative (an extra loss, which needs approval).
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
