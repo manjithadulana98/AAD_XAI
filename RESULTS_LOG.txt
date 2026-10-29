@@ -462,6 +462,60 @@ Notes
   before claiming spatial findings.
 ----------------------------------------------------------------------
 
+Entry date: 2026-10-29
+Experiment: Story-disjoint round 6 — 5-seed StimulusGAT ensemble and 5/10/20/40 s decision windows (vs TRF + EA)
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v10.py (Kaggle kernels
+  dulanamanjitha/story-disjoint-v10-round6-parta / -partb, code at commit 0b2a198)
+- story_disjoint_v10{A,B}.json and per-fold npz (Kaggle output; untracked).
+  Window meta verified identical across parts and between TRF and SGAT.
+
+Method / Protocol
+- Config unchanged from round 5 (EA for both models). No new modelling factor.
+- SGAT: 5 seeds (42 reloaded from round-5 checkpoints; 1-4 trained fresh).
+  Ensemble = mean of the per-window logit differences (B - A).
+- Longer decisions: src/aad_xai/evaluation/decision_windows.py groups
+  consecutive non-overlapping 5 s windows of one trial into 10/20/40 s;
+  the remainder at the end of a trial is dropped.
+  - SGAT: sum of logit differences.
+  - TRF: per length, the rule with higher pooled val accuracy among
+    (a) summed per-window corr differences and (b) corr recomputed from summed
+    sufficient statistics. Val chose (a) at every length.
+- Integrity: seed-42 reload reproduced round-5 test counts exactly in 18/18
+  folds; TRF saved scores match its counts in 18/18 folds.
+- Pre-registered: PRIMARY = ensemble SGAT vs TRF at 5 s, per-subject Wilcoxon
+  (two-sided). Secondary = same at 10/20/40 s, Holm over the 4 lengths. Shift
+  control (envelope rolled 2.5 s) at every length; no fold >= 0.6 at 5 s.
+
+Results (mean across 18 test subjects, each pooled over its 3 folds)
+  L    SGAT ens  mean seed  TRF+EA   diff    better  p       p_holm  shift
+  5 s  0.6828    0.6739     0.6673   +0.0155 11/18   0.117   0.351   0.498
+  10 s 0.7389    0.7283     0.7258   +0.0131 11/18   0.296   0.592   0.504
+  20 s 0.8091    0.7966     0.7916   +0.0175 12/18   0.320   0.592   0.518
+  40 s 0.8907    0.8733     0.8500   +0.0407 14/18   0.021   0.082   0.523
+- PRIMARY: not significant (+1.6 points, p=0.12).
+- No length survives Holm. 40 s is nominally p=0.021 (Holm 0.082).
+- Shift control at chance at every length (all p >= 0.10); no fold >= 0.6
+  at 5 s (max 0.533).
+- Ensemble vs mean single seed at 5 s: +0.0089, 17/18, p=0.0002.
+  Per-seed means: 0.677 / 0.680 / 0.676 / 0.668 / 0.668 (seed SD ~0.005).
+- TRF better than the ensemble at 5 s for S4, S7, S8, S10, S13, S14, S18.
+
+Notes
+- Best numbers so far (story-disjoint DTU, transductive EA, 5-seed ensemble):
+  0.683 @5 s, 0.739 @10 s, 0.809 @20 s, 0.891 @40 s.
+- The headline remains "StimulusGAT matches or slightly exceeds an equally
+  preprocessed TRF"; superiority is NOT established at the pre-registered level.
+  The gap widens with window length, but this is under-powered (about 60
+  decisions per subject at 40 s).
+- Compute is not matched: 5 SGAT seeds vs one closed-form TRF. That is the
+  natural comparison (TRF has no seed variance), but should be stated.
+- Context only (different protocol, likely not story-disjoint, no EA):
+  AADNet subject-independent DTU 0.561 @1 s ... 0.827 @40 s.
+- Remaining levers need sign-off (architecture / loss) or more data (KUL
+  dataset as a second cohort, which would also double the statistical power).
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
