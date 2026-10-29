@@ -510,8 +510,14 @@ Notes
   decisions per subject at 40 s).
 - Compute is not matched: 5 SGAT seeds vs one closed-form TRF. That is the
   natural comparison (TRF has no seed variance), but should be stated.
-- Context only (different protocol, likely not story-disjoint, no EA):
-  AADNet subject-independent DTU 0.561 @1 s ... 0.827 @40 s.
+- Context only (different protocol: LOSO with 8 folds over the test subject's
+  trials; training drops only trials whose ATTENDED story is a test attended
+  story, so it is not fully story-disjoint; no EA). AADNet's own DTU SI
+  results (external/AADNet/results/LOSO_*_DTU_final_SI_acc.npy, 18 subjects):
+    AADNet 0.575 @1 s, 0.699 @5 s, 0.762 @10 s, 0.830 @20 s, 0.894 @40 s
+    linear LSQ 0.665 @5 s, 0.825 @40 s
+  (Correction: the 0.561 @1 s / 0.827 @40 s quoted earlier are AADNet's KUL/Das
+  numbers, not DTU.)
 - Remaining levers need sign-off (architecture / loss) or more data (KUL
   dataset as a second cohort, which would also double the statistical power).
 ----------------------------------------------------------------------
