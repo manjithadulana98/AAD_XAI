@@ -408,6 +408,60 @@ Notes
   - a training-time shift-negative (an extra loss, which needs approval).
 ----------------------------------------------------------------------
 
+Entry date: 2026-10-29
+Experiment: Story-disjoint round 5 — per-subject Euclidean alignment (EA) of the EEG (TRF and StimulusGAT)
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v9.py (Kaggle kernel
+  dulanamanjitha/story-disjoint-v9-round5, code at commit 36fe00f)
+- story_disjoint_v9.json (Kaggle output; untracked). Compared offline with
+  rounds 3 and 4 (fold ids and meta verified identical for all 18 folds)
+
+Method / Protocol
+- Single factor: src/aad_xai/data/alignment.py. Each subject's EEG trials are
+  mapped to R^{-1/2} X, where R = that subject's mean trial covariance plus a
+  ridge of 1e-3 x mean eigenvalue (average-referenced EEG has rank 63/64).
+- References are computed per fold and per split:
+  - training subjects use their training-story trials;
+  - val/test subjects use their held-out-story trials.
+  - Unlabelled EEG only, but TRANSDUCTIVE for test subjects: state this
+    whenever the result is reported.
+- On-Kaggle check (S1, 60 trials): aligned eigenvalues median 0.974, max 1.000;
+  2 of 63 damped below 0.9 by the ridge; common mode stays ~0 (5e-13).
+- TRF: round-4 config (1-8 Hz EEG, 15-band envelope, multi-output ridge).
+- SGAT: round-3 config (1-31 Hz EEG, summed power-law envelope, 2.5 s hop,
+  seed 42).
+- Pre-registered:
+  - SGAT keeps EA iff val >= 0.6719 + 0.005 AND the shift control is at
+    chance (subject p >= 0.05 AND no fold with shift >= 0.6);
+  - the TRF baseline is whichever of {no EA, EA} has the higher val.
+
+Results (mean across 18 test subjects, each pooled over its 3 folds)
+- SGAT + EA 0.6773 vs round 3 0.6503: +0.0270, 13/18, p=0.0096.
+  - Val 0.6904 vs 0.6719 (higher in 12/18 folds).
+- TRF + EA 0.6673 vs round 4 0.6573: +0.0099, 9/18, p=0.16.
+  - Val 0.6739 vs 0.6517 (higher in 12/18).
+- Shift control 0.5040 (vs 0.5 p=0.55); no fold >= 0.6 (max 0.529).
+- -> EA KEPT for SGAT; the TRF baseline = TRF + EA.
+- MAIN: SGAT + EA vs TRF + EA: +0.0100, 12/18, p=0.37 (not significant).
+- Exploratory (not pre-registered): SGAT gains more from EA than the TRF does
+  (+0.017, 14/18, p=0.017).
+- Across-subject SD: SGAT 0.061 -> 0.045. The weakest subjects gain most:
+  S11 +0.110, S12 +0.094, S16 +0.068, S17 +0.062.
+
+Notes
+- Best accuracy so far: SGAT 0.677 on story-disjoint DTU (5 s windows).
+  - The SGAT gain is significant and the shift control is clean, so this is
+    envelope tracking, not the round-4 shortcut.
+  - But the lead over an equally aligned TRF (+1.0 point) is still within noise.
+- Single seed. The SGAT r3 -> EA comparison is between two runs with the same
+  seed, so part of it is run-to-run noise (within-subject seed SD ~0.014).
+  The seed ensemble in the next round will firm it up.
+- Interpretability: after EA, each input "channel" is a symmetric (ZCA)
+  whitening mix of electrodes, not one electrode. Channel/edge importance must
+  be mapped back to electrode space (via W = R^{-1/2}) or computed without EA
+  before claiming spatial findings.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
