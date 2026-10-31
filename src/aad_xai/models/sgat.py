@@ -123,6 +123,9 @@ class StimulusGAT(nn.Module):
         ``env`` of shape (B, 2, T). K > 1: K sub-band envelopes per candidate,
         ``env`` of shape (B, 2, K, T), read jointly by the shared speech
         encoder's first convolution.
+    film_pooling : {"cov", "corr"}
+        How the FiLM layer pools the EEG-speech term over time (see
+        TimeResolvedFiLM). "cov" (default) is the original model.
     """
 
     def __init__(
@@ -138,6 +141,7 @@ class StimulusGAT(nn.Module):
         gat_heads: int = 4,
         dropout: float = 0.3,
         speech_bands: int = 1,
+        film_pooling: str = "cov",
     ):
         super().__init__()
         self.speech_bands = speech_bands
@@ -156,7 +160,8 @@ class StimulusGAT(nn.Module):
         self.speech_encoder = SharedSpeechEncoder(
             embed_dim=speech_embed_dim, dropout=dropout, in_channels=speech_bands,
         )
-        self.film = TimeResolvedFiLM(speech_dim=speech_embed_dim, n_features=temporal_features)
+        self.film = TimeResolvedFiLM(speech_dim=speech_embed_dim, n_features=temporal_features,
+                                     pooling=film_pooling)
         self.gat = CandidateConditionedGAT(
             n_channels=n_channels, in_features=node_features,
             out_features=gat_hidden, adjacency=adjacency, n_heads=gat_heads, dropout=dropout,
@@ -185,27 +190,54 @@ class StimulusGAT(nn.Module):
         logits : Tensor, shape (B, 2) -- [score_a, score_b]
         attn : dict[str, Tensor], only if return_attention_weights=True
         """
+        if env.shape[1] != 2:
+            raise ValueError(f"forward expects 2 candidates, got env shape {tuple(env.shape)}")
+        out = self.score_candidates(eeg, env, return_attention_weights)
+        if return_attention_weights:
+            logits, attn = out
+            return logits, {"attn_a": attn[0], "attn_b": attn[1]}
+        return out
+
+    def score_candidates(
+        self, eeg: torch.Tensor, env: torch.Tensor, return_attention_weights: bool = False,
+    ):
+        """Score any number of candidate speech streams against one EEG window.
+
+        Every candidate goes through the same shared modules, so with the
+        model in eval mode a candidate's score does not depend on the other
+        candidates. ``forward`` is this method with 2 candidates.
+
+        Parameters
+        ----------
+        eeg : Tensor, shape (B, C, T)
+        env : Tensor, shape (B, N, T), or (B, N, K, T) if speech_bands = K > 1
+
+        Returns
+        -------
+        scores : Tensor, shape (B, N)
+        attn : Tensor, shape (N, B, heads, C, C), only if return_attention_weights=True
+        """
         B, _, T = eeg.shape
+        N = env.shape[1]
         h = self.temporal_encoder(eeg)                 # (B, C, F_t, T)
         f_feat = self.frequency_encoder(eeg)            # (B, C, F_f)
 
-        # Both candidates in one batch: index k*B + b is candidate k of sample b.
+        # All candidates in one batch: index k*B + b is candidate k of sample b.
         if self.speech_bands == 1 and env.dim() == 4 and env.shape[2] == 1:
-            env = env.squeeze(2)                                               # (B, 2, 1, T) -> (B, 2, T)
-        expected = (B, 2, T) if self.speech_bands == 1 else (B, 2, self.speech_bands, T)
+            env = env.squeeze(2)                                               # (B, N, 1, T) -> (B, N, T)
+        expected = (B, N, T) if self.speech_bands == 1 else (B, N, self.speech_bands, T)
         if tuple(env.shape) != expected:
             raise ValueError(f"env shape {tuple(env.shape)} != expected {expected}")
-        speech = self.speech_encoder(env.transpose(0, 1).reshape(2 * B, *env.shape[2:]))  # (2B, D_s, T)
-        speech = speech.view(2, B, -1, T)                                      # (2, B, D_s, T)
-        t_cond = torch.cat([self.film(h, speech[0]), self.film(h, speech[1])])  # (2B, C, F_t)
+        speech = self.speech_encoder(env.transpose(0, 1).reshape(N * B, *env.shape[2:]))  # (NB, D_s, T)
+        speech = speech.view(N, B, -1, T)                                      # (N, B, D_s, T)
+        t_cond = torch.cat([self.film(h, speech[k]) for k in range(N)])        # (NB, C, F_t)
 
-        node_feats = self.node_fusion(t_cond, f_feat.repeat(2, 1, 1))  # (2B, C, F_node)
+        node_feats = self.node_fusion(t_cond, f_feat.repeat(N, 1, 1))  # (NB, C, F_node)
         gat_out = self.gat(node_feats, return_attention_weights)
-        g, attn = gat_out if return_attention_weights else (gat_out, None)  # (2B, N, F_out)
+        g, attn = gat_out if return_attention_weights else (gat_out, None)  # (NB, C, F_out)
 
-        score = self.readout(self.readout_norm(g.mean(dim=1))).squeeze(-1)  # (2B,)
-        logits = score.view(2, B).t()                                        # (B, 2)
+        score = self.readout(self.readout_norm(g.mean(dim=1))).squeeze(-1)  # (NB,)
+        logits = score.view(N, B).t()                                        # (B, N)
         if return_attention_weights:
-            attn = attn.view(2, B, *attn.shape[1:])                          # (2, B, heads, N, N)
-            return logits, {"attn_a": attn[0], "attn_b": attn[1]}
+            return logits, attn.view(N, B, *attn.shape[1:])                  # (N, B, heads, C, C)
         return logits
