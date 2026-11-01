@@ -580,6 +580,54 @@ Notes
   (two half-runs, 9 folds each, to stay inside Kaggle's 12 h limit).
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-01
+Experiment: Story-disjoint round 7b — 5-seed ensemble of FiLM correlation pooling vs 5-seed round-5 ensemble
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v12.py (kernels
+  dulanamanjitha/story-disjoint-v12-round7b-ens12 / -ens34, code at commit 47a4b2e)
+- story_disjoint_v12{ens12,ens34}.json and per-fold npz (Kaggle output; untracked).
+  Seed 42 of corr comes from round 7 (v11corr). Window meta verified identical
+  to rounds 5-7 in all 18 folds.
+
+Method / Protocol
+- corr (round-7 config, film_pooling="corr") trained with seeds 1-4 on the same
+  18 folds; ensemble = mean of the 5 seeds' A-vs-B logit differences, as in
+  round 6. Reference: round-6 5-seed ensemble of the round-5 model.
+- Pre-registered (notebook header, before results): primary = corr ens vs r5 ens
+  at 5 s, per-subject Wilcoxon; secondary 10/20/40 s; Holm over the 4 lengths.
+  ADOPT iff the difference is positive at a length with Holm p < 0.05 AND the
+  corr ensemble's shift and swap controls are at chance (subject Wilcoxon vs 0.5
+  p >= 0.05 at every length, no fold >= 0.6 at 5 s).
+
+Results (mean across 18 test subjects, summed 5 s logits for longer windows)
+  L     corr ens  r5 ens  diff     better  p       p_holm  TRF+EA  corr-TRF p
+  5 s   0.6939    0.6828  +0.0111  14/18   0.0033  0.013   0.6673  +0.0267 0.025
+  10 s  0.7564    0.7389  +0.0174  13/18   0.0079  0.016   0.7258  +0.0305 0.019
+  20 s  0.8346    0.8091  +0.0255  13/18   0.0035  0.013   0.7916  +0.0430 0.019
+  40 s  0.8981    0.8907  +0.0074   9/18   0.18    0.18    0.8500  +0.0481 0.005
+- Controls (corr ensemble): shift 0.501 / 0.500 / 0.519 / 0.517, swap 0.497 /
+  0.493 / 0.506 / 0.505 at 5/10/20/40 s; all subject p >= 0.09. Max fold at 5 s:
+  shift 0.539, swap 0.549.
+- Single seeds at 5 s, corr / r5: s42 0.6807/0.6773, s1 0.6869/0.6803,
+  s2 0.6844/0.6756, s3 0.6782/0.6681, s4 0.6833/0.6680. corr beats r5 for every
+  seed; mean single seed +0.0088 (14/18, p=0.009). Seed SD: corr 0.0030, r5 0.0050.
+
+DECISION: ADOPT corr pooling (pre-registered rule met at 5, 10 and 20 s).
+
+Notes
+- Round 7's single-seed test gain (+0.34) understated the effect; with 5 seeds
+  per arm the gain is about +1.1 points at 5 s and is consistent across seeds.
+- The 40 s gain is not significant here (9/18), unlike the single-seed hint in
+  round 7: at 40 s both ensembles are near 0.89-0.90 and there are only ~3
+  decisions per subject per fold, so the comparison is coarse.
+- New standing (story-disjoint, EA, transductive): SGAT corr 5-seed ensemble
+  0.694 @5 s / 0.898 @40 s vs TRF+EA 0.667 / 0.850. The SGAT-vs-TRF difference is
+  now significant at every length (unadjusted p 0.005-0.025; these are secondary,
+  not pre-registered comparisons for this round).
+- Context only (different protocol): AADNet's published DTU LOSO 0.699 @5 s /
+  0.894 @40 s, where ~7/8 of stories are seen in training.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
