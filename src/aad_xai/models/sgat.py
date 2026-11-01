@@ -126,6 +126,9 @@ class StimulusGAT(nn.Module):
     film_pooling : {"cov", "corr"}
         How the FiLM layer pools the EEG-speech term over time (see
         TimeResolvedFiLM). "cov" (default) is the original model.
+    speech_kernel_sizes : tuple[int, int]
+        Kernel sizes of the shared speech encoder's two convolutions (odd).
+        Default (9, 9): receptive field 17 samples (~0.27 s at 64 Hz).
     """
 
     def __init__(
@@ -142,6 +145,7 @@ class StimulusGAT(nn.Module):
         dropout: float = 0.3,
         speech_bands: int = 1,
         film_pooling: str = "cov",
+        speech_kernel_sizes: tuple[int, int] = (9, 9),
     ):
         super().__init__()
         self.speech_bands = speech_bands
@@ -159,6 +163,7 @@ class StimulusGAT(nn.Module):
         )
         self.speech_encoder = SharedSpeechEncoder(
             embed_dim=speech_embed_dim, dropout=dropout, in_channels=speech_bands,
+            kernel_sizes=speech_kernel_sizes,
         )
         self.film = TimeResolvedFiLM(speech_dim=speech_embed_dim, n_features=temporal_features,
                                      pooling=film_pooling)

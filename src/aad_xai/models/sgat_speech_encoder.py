@@ -19,6 +19,7 @@ class SharedSpeechEncoder(nn.Module):
     hidden : int
         Number of channels after the first conv layer.
     kernel_sizes : tuple[int, int]
+        Must be odd so "same" padding keeps the time length T.
     dropout : float
     in_channels : int
         Envelope channels per candidate: 1 for a single broadband envelope
@@ -35,6 +36,8 @@ class SharedSpeechEncoder(nn.Module):
     ):
         super().__init__()
         k1, k2 = kernel_sizes
+        if k1 % 2 == 0 or k2 % 2 == 0:
+            raise ValueError(f"kernel sizes must be odd to keep the time length, got {kernel_sizes}")
         self.in_channels = in_channels
         self.net = nn.Sequential(
             nn.Conv1d(in_channels, hidden, kernel_size=k1, padding=k1 // 2),
