@@ -522,6 +522,64 @@ Notes
   dataset as a second cohort, which would also double the statistical power).
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-01
+Experiment: Story-disjoint round 7 — FiLM correlation pooling (corr) and same-trial negatives (neg), vs round-5 seed 42
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v11.py (kernels
+  dulanamanjitha/story-disjoint-v11-round7-corr / -neg, code at commit b2de296)
+- story_disjoint_v11{corr,neg}.json and per-fold npz (Kaggle output; untracked).
+  Window meta verified identical to rounds 5/6 in all 18 folds.
+
+Method / Protocol
+- Base = round 5 (EA, 1-31 Hz EEG, summed power-law envelope, 5 s windows,
+  2.5 s training hop, seed 42, same folds). One factor per arm:
+  - corr: TimeResolvedFiLM pools the EEG-speech term as the Pearson
+    correlation over time (AADNet's correlation layer) instead of the
+    covariance; plain A-vs-B cross-entropy.
+  - neg: covariance pooling; softmax CE over A, B and 6 same-trial negatives
+    (3 per talker, >= 3 s from the window).
+- New control: trial swap (each EEG window scored against another trial's
+  envelopes, talker order kept). It directly tests a talker shortcut.
+- Integrity: the reloaded round-5 checkpoints reproduced round-5 test counts
+  exactly in 18/18 folds.
+- Pre-registered: KEEP iff pooled val >= 0.6904 + 0.005 AND shift and swap
+  controls are both at chance (subject Wilcoxon vs 0.5 p >= 0.05, no fold >= 0.6).
+- AADNet was dropped from this round (see Notes).
+
+Results (mean across 18 test subjects; val = mean of fold-pooled val accuracy)
+  arm   val     test 5 s  vs r5 (paired)        shift  swap   verdict
+  r5    0.6904  0.6773    -                     0.504  0.502  (reference)
+  corr  0.7069  0.6807    +0.0034 10/18 p=0.50  0.500  0.500  KEEP (rule met)
+  neg   0.6920  0.6752    -0.0021  8/18 p=0.78  0.507  0.502  REJECT (val +0.0016)
+- corr val is higher in 16/18 folds (+1.65 points). No control flags: max fold
+  0.523 (shift), 0.563 (swap).
+- Test accuracy by decision window (summed 5 s logits), single seed:
+    L    r5      corr    neg     (5-seed ens   TRF+EA from round 6)
+    5 s  0.6773  0.6807  0.6752  0.6828        0.6673
+    10 s 0.7276  0.7352  0.7212  0.7389        0.7258
+    20 s 0.8031  0.8138  0.7907  0.8091        0.7916
+    40 s 0.8796  0.8981  0.8759  0.8907        0.8500
+  corr vs r5 at 40 s: +0.0185, 10/18, p=0.14. No test comparison is significant.
+
+Notes
+- The pre-registered rule keeps corr, but the evidence is weak: its val gain
+  (+1.65) is about 5x its test gain (+0.34, n.s.). Both models pick the best of
+  25 epochs on val, and selection optimism may be larger for corr. One seed;
+  within-subject seed SD ~0.014. Treat corr as "not harmful, possibly helpful at
+  long windows", not as an established improvement. A seed ensemble of corr
+  would be the way to firm it up.
+- neg is rejected, and its premise is not supported: the current model already
+  scores 0.502 on the trial-swap control (max fold 0.551), so there is no
+  evidence of a talker shortcut in the round-5 model.
+- AADNet: not rerun here. The user's own run (gs://addnet_results, 2026-06-25)
+  reproduces the published DTU LOSO numbers (0.571 @1 s, 0.693 @5 s, 0.751
+  @10 s, 0.819 @20 s, 0.877 @40 s) but uses AADNet's own LOSO protocol (about
+  7/8 of stories seen in training, no EA), so it is not comparable to these
+  story-disjoint numbers, and its checkpoints cannot be scored on our folds
+  without leakage. A like-for-like AADNet needs a retrain on our folds
+  (two half-runs, 9 folds each, to stay inside Kaggle's 12 h limit).
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
