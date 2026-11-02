@@ -27,6 +27,13 @@
 #   and over arms if both are kept). Combining two kept arms is a later round.
 # - Test results of the screen are descriptive only.
 #
+# Screen result (RESULTS_LOG 2026-11-02): skern KEEP, win10 REJECT. PARTs skern23 and
+# skern4 run the confirmatory seeds 2-4 of skern. Confirmatory test, fixed before these
+# runs: 5-seed skern ensemble vs 5-seed corr ensemble (round 7b), per-subject Wilcoxon
+# at 5/10/20/40 s, Holm over the 4 lengths; ADOPT iff positive with Holm p < 0.05 at
+# some length AND shift/swap controls of the skern ensemble at chance (subject p >= 0.05
+# at every length, no fold >= 0.6 at 5 s). Otherwise "not established".
+#
 # **Kaggle setup requirements**
 # - Enable Internet, attach `dulanamanjitha/aad-xai-artifacts`
 # - GPU required
@@ -83,6 +90,9 @@ PART = "skern"
 PARTS = {
     "skern": {"arm": "skern", "seeds": [42, 1], "speech_kernel_sizes": [33, 33], "train_window_s": 5.0},
     "win10": {"arm": "win10", "seeds": [42, 1], "speech_kernel_sizes": [9, 9], "train_window_s": 10.0},
+    # Confirmatory stage (skern passed the screen): seeds 2-4, same code path.
+    "skern23": {"arm": "skern", "seeds": [2, 3], "speech_kernel_sizes": [33, 33], "train_window_s": 5.0},
+    "skern4": {"arm": "skern", "seeds": [4], "speech_kernel_sizes": [33, 33], "train_window_s": 5.0},
 }
 CFG = PARTS[PART]
 print(f"Part {PART}: {CFG}")

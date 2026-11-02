@@ -628,6 +628,52 @@ Notes
   0.894 @40 s, where ~7/8 of stories are seen in training.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-02
+Experiment: Story-disjoint round 8 screen — speech-encoder kernels (33, 33) [skern] and 10 s training windows [win10], on top of corr pooling
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v13.py (kernels
+  dulanamanjitha/story-disjoint-v13-round8-skern / -win10, code at commit 30c7553)
+- story_disjoint_v13{skern,win10}.json and per-fold npz (Kaggle output; untracked).
+  Window meta verified identical to rounds 5-7b in all 18 folds.
+
+Method / Protocol
+- Base = round 7b (round-5 config + film_pooling="corr"). One factor per part,
+  seeds 42 and 1 each:
+  - skern: shared speech-encoder kernels (33, 33), receptive field 65 samples
+    (~1 s at 64 Hz, like AADNet's speech kernel) instead of (9, 9) (17 samples).
+  - win10: training windows 10 s (hop 2.5 s) instead of 5 s; val/test windows 5 s.
+- Reference: corr seeds 42 (round 7) and 1 (round 7b), same folds.
+- Pre-registered (notebook header): KEEP iff the 2-seed mean of the mean
+  fold-pooled val accuracy >= reference + 0.005 AND the 2-seed ensemble's shift
+  and swap controls at 5 s are at chance (subject p >= 0.05, no fold >= 0.6).
+  Test is descriptive; a kept arm gets seeds 2-4 and a 5-vs-5 ensemble test.
+
+Results (val = mean fold-pooled 5 s val accuracy; test = 2-seed ensembles)
+  arm    val s42  val s1  mean    vs ref (0.7067)        verdict
+  skern  0.7137   0.7178  0.7158  +0.0091, 14/18 folds   KEEP
+  win10  0.7012   0.6979  0.6996  -0.0071,  4/18 folds   REJECT
+- Controls clean for both (skern: shift 0.501, swap 0.497, max fold 0.548;
+  win10: 0.498 / 0.499, max fold 0.531).
+- Test, 2-seed ensembles vs 2-seed corr (descriptive, unadjusted):
+    L     corr    skern   diff     n    p        win10   diff     n    p
+    5 s   0.6892  0.7096  +0.0204 16/18 0.0009   0.6868  -0.0024  6/18 0.61
+    10 s  0.7486  0.7786  +0.0300 16/18 0.0004   0.7422  -0.0063  6/18 0.17
+    20 s  0.8319  0.8536  +0.0218 12/18 0.008    0.8115  -0.0204  3/18 0.002
+    40 s  0.8953  0.9166  +0.0213 13/18 0.024    0.9000  +0.0046  7/18 0.43
+
+Notes
+- skern's test gain (+2.0 @5 s) is larger than its val gain (+0.9), the
+  reverse of round 7; with 2 seeds this is still screening evidence. The
+  confirmatory 5-seed test follows (seeds 2-4).
+- win10 is rejected on val and is also worse on test at 20 s. Training on 10 s
+  and testing on 5 s windows is a train/test length mismatch (per-window
+  z-scoring and correlation statistics change with length); it was not tested
+  with matched 10 s test windows.
+- The longer speech kernel adds ~4k parameters to the speech encoder; the EEG
+  side is unchanged. Wider speech context lets the FiLM correlation absorb
+  EEG-speech lags beyond ~130 ms each side.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
