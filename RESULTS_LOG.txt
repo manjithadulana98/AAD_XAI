@@ -618,8 +618,8 @@ Notes
 - Round 7's single-seed test gain (+0.34) understated the effect; with 5 seeds
   per arm the gain is about +1.1 points at 5 s and is consistent across seeds.
 - The 40 s gain is not significant here (9/18), unlike the single-seed hint in
-  round 7: at 40 s both ensembles are near 0.89-0.90 and there are only ~3
-  decisions per subject per fold, so the comparison is coarse.
+  round 7: at 40 s both ensembles are near 0.89-0.90 and there are only ~60
+  decisions per subject (~20 per fold), so the comparison is coarse.
 - New standing (story-disjoint, EA, transductive): SGAT corr 5-seed ensemble
   0.694 @5 s / 0.898 @40 s vs TRF+EA 0.667 / 0.850. The SGAT-vs-TRF difference is
   now significant at every length (unadjusted p 0.005-0.025; these are secondary,
