@@ -672,6 +672,111 @@ Notes
 - The longer speech kernel adds ~4k parameters to the speech encoder; the EEG
   side is unchanged. Wider speech context lets the FiLM correlation absorb
   EEG-speech lags beyond ~130 ms each side.
+- CORRECTION (code review, 2026-11-03): the win10 REJECT is invalid. The
+  frequency encoder's log band power grows with window length, so training on
+  10 s and testing on 5 s windows shifts every frequency feature by ~log 2.
+  Treat 10 s training windows as untested. See the next entry.
+----------------------------------------------------------------------
+
+Entry date: 2026-11-03
+Experiment: Code review before reporting (no new training)
+Sources:
+- Two independent read-only code reviews (data/splits/alignment; model/
+  training/evaluation/statistics).
+- Independent recomputation of the headline numbers from the saved per-window
+  outputs, without decision_windows.py (scratchpad recheck_numbers.py).
+- Kaggle CPU kernel dulanamanjitha/dtu-channel-labels: channel labels stored in
+  the DTU files (data.dim.chan.eeg), onset trigger codes vs expinfo.trigger, and
+  EEG vs audio trial durations, for all 18 subjects.
+
+Verified correct
+- Headline numbers reproduce exactly: corr 5-seed ensemble 0.6939 / 0.7564 /
+  0.8346 / 0.8981; round-5 ensemble 0.6828 / 0.7389 / 0.8091 / 0.8907; TRF + EA
+  0.6673 / 0.7258 / 0.7916 / 0.8500 (5/10/20/40 s); controls 0.5005 (shift),
+  0.4973 (swap). P-values reproduce (corr vs r5, Holm: 0.013 / 0.016 / 0.013 /
+  0.18).
+- Coverage: each subject's 60 two-talker trials are tested exactly once; no
+  trial is split across folds; val and test subjects are disjoint; window meta is
+  identical across all runs; TRF and SGAT use the same windows; score sign
+  conventions agree (positive = B).
+- Labels: label = attend_mf - 1, A = male wav, B = female wav; saved labels
+  match expinfo; the label is constant within each trial.
+- DTU files: 73 columns = 64 EEG in BioSemi-64 order (identical for all 18
+  subjects) + EXG1-8 + Status. The loader keeps the first 64, so no trigger
+  channel enters the EEG. Onset event values equal expinfo.trigger in 18/18
+  subjects. One EEG/audio length mismatch: S8 trial 45 (aske_story1_trial_12),
+  19.6 s of EEG vs 50 s of audio (3 windows; the envelope is cut to the EEG).
+- Male and female stories are disjoint between train and val/test in all 18
+  folds (checked on the real expinfo).
+- StimulusGAT is candidate-symmetric in eval mode: swapping the candidates swaps
+  the logits; changing B's envelope leaves A's score unchanged.
+
+Findings
+1. BUG, all rounds: StimulusGAT's default electrode graph is built from
+   config/dtu_channel_montage.csv, a generic template (Fp1, Fp2, F7, F3, ...,
+   M1, M2). The DTU EEG columns are in BioSemi-64 order (Fp1, AF7, AF3, F1, ...;
+   = config/aadnet_dtu_channel_montage.csv). Only 7/64 names agree by index;
+   57 of the graph's 219 edges (26%) join true 6-nearest neighbours; median edge
+   length 0.074 vs 0.029 for true neighbours (2-D montage units, m).
+   - Effect: the accuracies are real measurements of the trained models, but the
+     graph was not the physical prior described; any spatial explanation from
+     these models would be wrong.
+   - The adjacency mask is a saved buffer, so old checkpoints still reproduce.
+   - The same template is the default in stgcn/adjacency.py and in the earlier
+     VLAAI / ST-GCN XAI scripts (scripts/run_focused_xai*.py and others); their
+     channel names and regions need checking before reuse. The AADNet XAI path
+     was already fixed in f5c8734.
+2. PROTOCOL (DTU design): each subject attends one talker for a whole story,
+   counterbalanced across subjects. Removing the test and val subjects from
+   training tilts each fold's training prior towards the test subjects' talker.
+   - corr(train P(B), test P(B)) = 0.78 across folds; 4 folds have single-talker
+     test sets (sgso_g1_k1, g3_k0, g3_k1, g4_k1).
+   - An EEG-free rule "always predict the training-majority talker" scores 0.676
+     (fold mean of window accuracy; 0.670 subject mean).
+   - Current models do not exploit it: shift control 0.48-0.53 in the four
+     single-talker folds (the round-4 shortcut model scored 0.82-0.84 in g3_k0,
+     g3_k1, g4_k1); under the shift control the corr ensemble picks the
+     training-majority talker 50.8% of the time; fold accuracy is unrelated to
+     the prior rule's accuracy (Spearman +0.05); subtracting each fold's
+     shift-control bias changes accuracy by -0.001.
+   - Not ruled out: a residual of 1-3 points (the aligned-vs-misaligned window
+     contrast against the TRF is +2.7, p = 0.06, but confounded by subject x
+     story difficulty).
+   - This very likely explains the round-4 shortcut (no EEG cue needed).
+   - Class-balanced accuracy does not remove this effect, because each test
+     block is single-class.
+3. BUG: PerChannelFrequencyEncoder._band_power averages unnormalised |rfft|^2
+   per band, so for z-scored windows it grows with window length (log shift
+   0.68-0.73 between 10 s and 5 s in all 8 bands, measured). No effect on
+   5 s-trained / 5 s-tested results; invalidates the round-8 win10 test; must be
+   fixed before any 1 s / 2 s evaluation of a 5 s model.
+4. STATS: the SGAT-vs-TRF differences were described as significant at every
+   length using uncorrected p. Holm over the 4 lengths: 0.056 / 0.056 / 0.056 /
+   0.019, so only 40 s is significant.
+5. METHOD: the same 18 test subjects were evaluated in all rounds (decisions
+   mostly on validation, but the 7b adoption used test, and the round-8
+   confirmation reuses seeds 42 and 1, already inspected). Validation subjects
+   are scored on the test stories, so best-epoch selection, TRF alpha selection
+   and the KEEP screens all use the test stimuli. The headline is a development
+   estimate; a clean estimate needs a new cohort.
+6. MINOR:
+   - The TRF lag matrix is built per 5 s window (last 0.39 s zero-filled, ~8% of
+     rows, also in training), so the baseline may be slightly weakened.
+   - KEEP screens use the maximum-over-epochs validation accuracy (optimistic).
+   - Round 1's per-subject binomial "above chance" claims are invalid (windows
+     are not independent; label structure).
+   - assert_story_disjoint_fold_integrity uses the same mapping that builds the
+     folds and never sees the female wav; it should check female stories,
+     coverage and unmapped two-talker trials.
+
+Actions (proposed; the reruns need GPU)
+- Fix 1 (correct montage) and 3 (normalise band power by window length); add
+  class-balanced training per fold; rerun the current best model (corr pooling,
+  1 s speech kernels) over 5 seeds as the new baseline.
+- Report the EEG-free prior baseline and a per-fold control table that includes
+  the training prior.
+- Strengthen loader and fold assertions (trigger codes, durations, channel
+  labels, female stories).
 ----------------------------------------------------------------------
 
 Append template (copy/paste for new runs)
