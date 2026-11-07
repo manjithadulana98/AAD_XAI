@@ -890,6 +890,79 @@ Notes
   bit for bit on Kaggle.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-08
+Experiment: Interpretability X1 — faithfulness of StimulusGAT explanations (round-9 models)
+Sources:
+- notebooks/kaggle_run_dtu_xai_round9.py (kernel dulanamanjitha/xai-round9-faithfulness,
+  harness at commit c05ebe1), on the round-9 checkpoints (seed 42 explained; all 5
+  seeds for stability).
+- xai_round9.json (Kaggle output; untracked). 54 subject-folds, 18 subjects, 205 min.
+  Saved test logits reproduced exactly (agreement 1.000); median alignment
+  locality 0.83.
+
+Method / Protocol
+- Per test subject, explanations from one half of the test trials are evaluated
+  on the other half (cross-fitted). Subject = unit (n = 18).
+- Channel methods: occlusion, integrated gradients (phase-randomised baseline),
+  attention received. Edge methods: attention, attention x gradient. Bands: IG on
+  the frequency encoder's band-power features, against the margin drop when the
+  band is filtered out of all electrodes (band-stop).
+- Pre-registered rules in the notebook header (levels 1, 2, 4, bands, H2).
+
+Results
+- Level 1, sanity (median Spearman with the fully randomised model, pass if
+  |rho| < 0.3): occlusion -0.213, IG -0.072, attention +0.286, band -0.095. All
+  pass; attention only just. Randomising the readout leaves attention unchanged
+  (+1.00), and randomising everything leaves rho about 0.3, so part of the
+  attention pattern does not come from learned weights.
+- Level 2, channel faithfulness (deletion by swapping in another window's
+  signal; area under the accuracy curve, random = 20 random rankings):
+    method     delete  random  Holm p    keep   random  Holm p
+    occlusion  0.557   0.607   <0.0001   0.539  0.525   0.004
+    IG         0.577   0.607   <0.0001   0.536  0.525   0.013
+    attention  0.588   0.607   <0.0001   0.543  0.525   <0.0001
+  All PASS. Zero-deletion (secondary) agrees.
+- Edges (edge removal): attention 0.674 and attention x gradient 0.669 vs random
+  0.693, both Holm p < 0.0001. PASS.
+- H2 (attention less faithful): attention deletion area above occlusion
+  (p < 0.0001) and above IG (p = 0.019). SUPPORTED.
+- Bands: median Spearman between band attribution and band-stop drop -0.13
+  (IQR -0.36 to 0.07). FAIL. Band-power IG is small and negative in every band
+  (-0.002 to -0.005). Band-stop margin drops: theta 0.167, alpha1 0.117,
+  alpha2 0.100, delta 0.053, beta1 0.020, gamma1 0.010, beta3 0.005, beta2 0.004.
+- Level 4, stability across the 10 seed pairs (pass if median rho >= 0.7):
+  occlusion 0.696, IG 0.567, attention 0.385. All FAIL (occlusion just).
+- Group electrode importance (descriptive; z-scored per subject, averaged):
+    occlusion  Fp2, Fp1, Fpz, AF7, AF8, AF3, AFz, AF4, T8, PO8
+    IG         C5, FC6, T8, FCz, C3, C6, Fz, P8, FC4, TP8
+    attention  C5, FCz, C3, POz, F2, C4, FC6, AF3, T8, PO3
+
+DECISION (pre-registered): channel and edge explanations are faithful in the
+deletion sense (level 2) and pass sanity (level 1). Attention is the least
+faithful channel method (H2). The band-power attribution does not reflect how
+the model uses frequency bands. No channel method is stable across seeds (level 4).
+
+Notes
+- The most faithful channel method, occlusion, ranks frontal-polar electrodes
+  (Fp1/Fp2/Fpz/AF7/AF8) highest. Our pipeline does no EOG removal
+  (dtu_dataset.py keeps the first 64 of 73 columns: 64 EEG + 8 ExG + status), so
+  the model may use ocular activity. Eye movements are reported to track
+  attended speech, so this would be attention-related but not cortical. A
+  second possibility is that swapping high-variance frontal channels perturbs
+  the model more for reasons unrelated to information. Not tested yet. Needs an
+  ocular control (EOG-only decoder; EOG regression and retraining) before any
+  neural interpretation of the maps.
+- IG and attention agree with each other on fronto-central/temporal sites (C5,
+  FCz, C3, T8, FC6), the usual auditory topography, but disagree with occlusion.
+- The band IG covers only the frequency-branch path. Band-stop removes the band
+  from the temporal branch too, so the two measure different things. The model
+  depends on theta and alpha by intervention, and its band-power features
+  contribute little. For CLAUDE.md "frequency-band contributions", band-stop is
+  the defensible report; the band-power IG should not be presented as one.
+- Stability failure: explanations from one seed do not transfer to another.
+  Group maps should be averaged over seeds and reported with that spread.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
