@@ -39,6 +39,11 @@ class PerChannelFrequencyEncoder(nn.Module):
         Number of frequency features produced per electrode.
     bands_hz : tuple[tuple[float, float], ...]
         Frequency band edges in Hz.
+    length_normalize : bool
+        Divide the FFT power by the window length T. Without it, the mean
+        per-bin power of a z-scored window grows in proportion to T (Parseval),
+        so features shift by log(T1/T2) between window lengths. Default False
+        keeps checkpoints trained before round 9 reproducible.
     """
 
     def __init__(
@@ -48,6 +53,7 @@ class PerChannelFrequencyEncoder(nn.Module):
         out_features: int = 8,
         bands_hz: tuple[tuple[float, float], ...] = DEFAULT_BANDS_HZ,
         eps: float = 1e-6,
+        length_normalize: bool = False,
     ):
         super().__init__()
         self.n_channels = n_channels
@@ -55,6 +61,7 @@ class PerChannelFrequencyEncoder(nn.Module):
         self.out_features = out_features
         self.bands_hz = bands_hz
         self.eps = eps
+        self.length_normalize = length_normalize
         n_bands = len(bands_hz)
 
         # Per-electrode Linear(n_bands -> out_features): groups=n_channels
@@ -69,6 +76,8 @@ class PerChannelFrequencyEncoder(nn.Module):
         n_times = x.size(-1)
         spectrum = torch.fft.rfft(x, dim=-1)                       # (B, C, T//2+1) complex
         power = spectrum.real ** 2 + spectrum.imag ** 2            # (B, C, T//2+1)
+        if self.length_normalize:
+            power = power / n_times                                # per-bin power, independent of T
         freqs = torch.fft.rfftfreq(n_times, d=1.0 / self.sfreq).to(x.device)  # (T//2+1,)
 
         band_feats = []

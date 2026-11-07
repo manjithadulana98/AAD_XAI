@@ -66,6 +66,14 @@ class NodeFeatureFusion(nn.Module):
         return self.norm(out)  # per-node LayerNorm over the out_features axis
 
 
+# Electrode positions in the column order of the DTU EEG files (BioSemi-64,
+# A1..B32), verified against data.dim.chan.eeg in all 18 subject files.
+# config/dtu_channel_montage.csv (the stgcn default) is a generic template in a
+# different order: only 7/64 names agree by index. Models trained before round 9
+# used that template; their adjacency is stored in their checkpoints.
+DTU_MONTAGE_PATH = Path(__file__).resolve().parents[3] / "config" / "aadnet_dtu_channel_montage.csv"
+
+
 def _load_default_adjacency(montage_path: Path | None = None) -> torch.Tensor:
     """Build the default distance-based k-NN (k=6) electrode adjacency from
     ``stgcn/adjacency.py``, following the same ``sys.path`` import trick
@@ -79,7 +87,7 @@ def _load_default_adjacency(montage_path: Path | None = None) -> torch.Tensor:
         sys.path.insert(0, str(stgcn_dir))
     import adjacency as stgcn_adjacency  # stgcn/adjacency.py
 
-    path = montage_path or stgcn_adjacency.DEFAULT_MONTAGE_PATH
+    path = montage_path or DTU_MONTAGE_PATH
     montage = stgcn_adjacency.load_montage(path)
     A = stgcn_adjacency.build_adjacency_distance(montage, k=6)
     return torch.as_tensor(A, dtype=torch.float32)
@@ -116,8 +124,8 @@ class StimulusGAT(nn.Module):
         EEG sampling rate in Hz (needed by the frequency encoder).
     adjacency : Tensor | None
         Optional (n_channels, n_channels) electrode adjacency. If ``None``,
-        the default distance-based k-NN (k=6) adjacency is built from
-        ``config/dtu_channel_montage.csv`` via ``stgcn/adjacency.py``.
+        the default distance-based k-NN (k=6) adjacency is built from the
+        DTU (BioSemi-64) electrode positions, ``DTU_MONTAGE_PATH``.
     speech_bands : int
         Envelope channels per candidate. 1 (default): one broadband envelope,
         ``env`` of shape (B, 2, T). K > 1: K sub-band envelopes per candidate,
@@ -129,6 +137,10 @@ class StimulusGAT(nn.Module):
     speech_kernel_sizes : tuple[int, int]
         Kernel sizes of the shared speech encoder's two convolutions (odd).
         Default (9, 9): receptive field 17 samples (~0.27 s at 64 Hz).
+    freq_length_normalize : bool
+        Length-normalise the frequency encoder's band power (see
+        PerChannelFrequencyEncoder). Needed to score windows of a different
+        length than training; default False for pre-round-9 checkpoints.
     """
 
     def __init__(
@@ -146,6 +158,7 @@ class StimulusGAT(nn.Module):
         speech_bands: int = 1,
         film_pooling: str = "cov",
         speech_kernel_sizes: tuple[int, int] = (9, 9),
+        freq_length_normalize: bool = False,
     ):
         super().__init__()
         self.speech_bands = speech_bands
@@ -157,6 +170,7 @@ class StimulusGAT(nn.Module):
         )
         self.frequency_encoder = PerChannelFrequencyEncoder(
             n_channels, sfreq=sfreq, out_features=freq_features,
+            length_normalize=freq_length_normalize,
         )
         self.node_fusion = NodeFeatureFusion(
             n_channels, in_features=temporal_features + freq_features, out_features=node_features,
