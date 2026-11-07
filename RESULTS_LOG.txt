@@ -843,6 +843,53 @@ Notes
   averaging (EMA) as the next single factor.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-07
+Experiment: Story-disjoint round 10 — weight EMA screen (2 seeds)
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v15.py (kernel
+  dulanamanjitha/story-disjoint-v15-round10-emab, code at commit 10ab0d6)
+- story_disjoint_v15emaB.json and per-fold npz (Kaggle output; untracked).
+  Window meta checked identical to round 9 fixB in all 18 folds.
+
+Method / Protocol
+- Round-9 corrected baseline, seeds 3 and 4. Each training run keeps two
+  candidates: raw weights and an exponential moving average of the weights
+  (decay 1 - 1/steps_per_epoch, about 0.993; equal-weight running mean before
+  the horizon). Each candidate picks its own best epoch by class-balanced
+  pooled val accuracy. Both come from the same run, so the comparison is paired.
+- Pre-registered (notebook header): KEEP iff mean selected val over the 36
+  (fold, seed) runs is >= 0.5 points higher for EMA. If KEEP, emaA (seeds 42,
+  1, 2) completes the 5 seeds. Test results descriptive only.
+
+Results
+- Screen (validation): raw 0.7068, EMA 0.7072, diff +0.0004 (EMA higher in
+  17/36 runs, lower in 14/36).
+- Mean val curve (epochs 1,2,3,4,5,7,10,15,20,25):
+    raw 0.681 0.688 0.690 0.687 0.685 0.683 0.676 0.664 0.664 0.660
+    EMA 0.680 0.693 0.693 0.696 0.695 0.689 0.684 0.673 0.669 0.668
+  EMA slows the decline after the peak but does not raise the peak the
+  selection rule picks. Median best epoch raw 4, EMA 5.
+- Test (descriptive; 2-seed ensemble, EMA - raw): 5 s +0.0000, 10 s +0.0002,
+  20 s +0.0051, 40 s +0.0028, 1 s +0.0038, 2 s +0.0044; no p < 0.05. Single
+  seeds at 5 s: +0.0043 (s3), +0.0071 (s4). The one uncorrected p < 0.05
+  (s4, 1 s, p = 0.031) is one of 18 descriptive tests and does not survive Holm.
+- Reproducibility: the raw arm matches round 9 fixB exactly (window decision
+  agreement 1.000 for both seeds; 5 s accuracy 0.6885 / 0.6891).
+- Controls (EMA ensemble): shift 0.504 / 0.508 / 0.518 / 0.518, swap 0.498 /
+  0.506 / 0.507 / 0.501 at 5/10/20/40 s, all p >= 0.24; max fold at 5 s 0.555
+  (shift), 0.561 (swap).
+
+DECISION: REJECT. Round-9 baseline unchanged; emaA not run (saves ~4 GPU-h).
+
+Notes
+- Weight averaging does not fix the early, noisy checkpoint selection. The
+  noise is probably in the 2-subject validation estimate, not in the weights.
+  More val subjects or selection on a pooled criterion would test that, but
+  this protocol fixes 2 val subjects per fold.
+- Independently of the decision, the raw arm repeats the round-9 code path
+  bit for bit on Kaggle.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
