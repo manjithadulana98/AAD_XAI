@@ -648,6 +648,94 @@ def assert_loso_fold_integrity(trials: Sequence[Trial], fold: CVFold) -> None:
 
 
 # ======================================================================== #
+#  AADNet / CA-TCN subject-independent protocol (DTU)
+# ======================================================================== #
+# Reproduces DTUDataset.createSICrossValidation in AADNet's public code
+# (external/AADNet/aadnet/dataset.py) and the protocol CA-TCN reports
+# (arXiv 2603.26394): leave one subject out; the test subject's usable trials
+# are split by KFold(8, shuffle=True, random_state=<subject index>); training
+# uses every usable trial of the other subjects EXCEPT those whose attended
+# audio file is attended in some test trial (same segment, same talker); a
+# random 20% of those trials (train_test_split, random_state=<subject index>)
+# is the validation set. Same segment with the other talker attended, and other
+# segments of the same story, stay in training.
+
+def _natural_subject_key(subject_id: str):
+    digits = "".join(ch for ch in subject_id if ch.isdigit())
+    return (int(digits) if digits else math.inf, subject_id)
+
+
+def loso_attended_track_out(
+    trials: Sequence[Trial],
+    attended_track: dict[str, str],
+    n_trial_folds: int = 8,
+    val_fraction: float = 0.2,
+    subject_order: Sequence[str] | None = None,
+) -> Iterator[CVFold]:
+    """AADNet / CA-TCN subject-independent folds.
+
+    attended_track maps trial_id -> attended audio file (e.g. the male wav if
+    label 0, the female wav if label 1). Trials without an entry (single-talker)
+    are ignored. Subject i (0-based, S1, S2, ... in natural order unless
+    subject_order is given) seeds both its KFold and its train/val split with i,
+    as AADNet does, so with trials in file order the test folds equal AADNet's.
+    Yields n_subjects * n_trial_folds folds, fold_id "loso_<subject>_f<k>".
+    """
+    from sklearn.model_selection import KFold, train_test_split
+
+    usable = [i for i, t in enumerate(trials) if t.trial_id in attended_track]
+    subjects = list(subject_order) if subject_order is not None else sorted(
+        {trials[i].subject_id for i in usable}, key=_natural_subject_key)
+    by_subj = {s: [i for i in usable if trials[i].subject_id == s] for s in subjects}
+    for si, s in enumerate(subjects):
+        test_pool = by_subj[s]
+        others = [i for s2 in subjects if s2 != s for i in by_subj[s2]]
+        kf = KFold(n_splits=n_trial_folds, shuffle=True, random_state=si)
+        for k, (_, te) in enumerate(kf.split(np.arange(len(test_pool)))):
+            test_idx = [test_pool[j] for j in te]
+            test_tracks = {attended_track[trials[j].trial_id] for j in test_idx}
+            pool = [i for i in others if attended_track[trials[i].trial_id] not in test_tracks]
+            if val_fraction > 0:
+                tr_pos, va_pos = train_test_split(np.arange(len(pool)), test_size=val_fraction, random_state=si)
+            else:
+                tr_pos, va_pos = np.arange(len(pool)), np.array([], dtype=int)
+            yield CVFold(
+                fold_id=f"loso_{s}_f{k}",
+                train_idx=[pool[p] for p in tr_pos],
+                val_idx=[pool[p] for p in va_pos],
+                test_idx=test_idx,
+                meta={
+                    "strategy": "loso_attended_track_out",
+                    "test_subjects": [s],
+                    "subject_index": si,
+                    "trial_fold": k,
+                    "n_excluded": len(others) - len(pool),
+                },
+            )
+
+
+def assert_loso_attended_track_integrity(
+    trials: Sequence[Trial], fold: CVFold, attended_track: dict[str, str],
+) -> None:
+    """Check a loso_attended_track_out fold: the test subject is absent from
+    train and val, the three splits share no trial, and no train or val trial
+    attends an audio file that a test trial attends."""
+    test_subj = {trials[i].subject_id for i in fold.test_idx}
+    if len(test_subj) != 1:
+        raise AssertionError(f"[{fold.fold_id}] test set spans subjects {test_subj}")
+    for name, idx in (("train", fold.train_idx), ("val", fold.val_idx)):
+        if test_subj & {trials[i].subject_id for i in idx}:
+            raise AssertionError(f"[{fold.fold_id}] test subject in {name}")
+    ids = [set(trials[i].trial_id for i in idx) for idx in (fold.train_idx, fold.val_idx, fold.test_idx)]
+    if ids[0] & ids[1] or ids[0] & ids[2] or ids[1] & ids[2]:
+        raise AssertionError(f"[{fold.fold_id}] trial shared between splits")
+    test_tracks = {attended_track[trials[i].trial_id] for i in fold.test_idx}
+    leaked = {attended_track[trials[i].trial_id] for i in fold.train_idx + fold.val_idx} & test_tracks
+    if leaked:
+        raise AssertionError(f"[{fold.fold_id}] attended track shared with test: {sorted(leaked)[:3]}")
+
+
+# ======================================================================== #
 #  Registry
 # ======================================================================== #
 
