@@ -779,6 +779,70 @@ Actions (proposed; the reruns need GPU)
   labels, female stories).
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-07
+Experiment: Story-disjoint round 9 — corrected baseline (code-review fixes + skern), 5 seeds
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v14.py (kernels
+  dulanamanjitha/story-disjoint-v14-round9-fixa / -fixb, code at commit 73f188c)
+- story_disjoint_v14{fixA,fixB}.json, per-fold npz and 90 checkpoints (Kaggle
+  output; untracked). Window meta verified identical to rounds 5-8 in all 18 folds.
+
+Method / Protocol
+- Round 7b model (corr pooling) + speech kernels (33, 33) (round-8 screen KEEP) +
+  the code-review fixes: electrode graph from the DTU BioSemi-64 positions (order
+  checked on Kaggle against data.dim.chan.eeg, 64/64), band power normalised by
+  window length, class-balanced cross-entropy, best epoch by class-balanced
+  pooled val accuracy. Seeds 42, 1, 2 (fixA) and 3, 4 (fixB).
+- Also scores 1 s and 2 s non-overlapping test windows with the 5 s-trained model.
+- Pre-registered (notebook header): the corrected model becomes the baseline
+  regardless (bug fixes). Primary: 5-seed fix ensemble vs 5-seed round-7b corr
+  ensemble at 5/10/20/40 s, per-subject Wilcoxon, Holm over lengths; "better" iff
+  positive with Holm p < 0.05 at some length, "no loss" iff mean diff >= -0.5
+  points at every length, else "loss". Controls at chance.
+
+Results (mean over 18 test subjects; 5-seed ensembles, summed 5 s logits)
+  L     fix ens  corr ens  diff     better  p       p_holm  TRF+EA  fix-TRF  p_holm
+  5 s   0.7017   0.6939    +0.0078  13/18   0.055   0.12    0.6673  +0.0344  0.017
+  10 s  0.7661   0.7564    +0.0098  11/18   0.055   0.12    0.7258  +0.0403  0.017
+  20 s  0.8462   0.8346    +0.0116  11/18   0.041   0.12    0.7916  +0.0546  0.004
+  40 s  0.9213   0.8981    +0.0231  12/18   0.015   0.060   0.8500  +0.0713  0.006
+- CLAIM: no loss (positive at every length, not Holm-significant).
+- Controls (fix ensemble): shift 0.502 / 0.506 / 0.508 / 0.495, swap 0.505 /
+  0.506 / 0.508 / 0.499 at 5/10/20/40 s, all subject p >= 0.25; max fold at 5 s
+  0.539 (shift), 0.545 (swap). Under the shift control the ensemble picks the
+  fold's training-majority talker in 50.6% of windows (EEG-free prior rule 0.670).
+- Single seeds at 5 s (fix / round-7b corr): s42 0.6963/0.6807, s1 0.6726/0.6869,
+  s2 0.6957/0.6844, s3 0.6885/0.6782, s4 0.6891/0.6833; fix higher for 4/5 seeds,
+  mean +0.0057. Seed SD 0.0096 (fix) vs 0.0034 (corr): seed 1 is low.
+- Mean class-balanced val 0.7085; median best epoch 4 of 25 (41% of runs <= 3).
+- Same seeds vs the round-8 skern screen (old graph, no fixes): s42 -0.0044,
+  s1 -0.0260. The skern screen's +2.0 points (2 seeds) did not carry over in full.
+- Field-standard lengths (descriptive; CA-TCN is a single model, LOSO without
+  trials sharing the attended story, no alignment):
+    L     single-model mean  5-seed ensemble  CA-TCN
+    1 s   0.5676             0.5750           0.583
+    2 s   0.6178             0.6286           0.634
+    5 s   0.6884             0.7017           0.703
+    10 s  0.7528             0.7661           0.767
+
+DECISION: the corrected model is the new baseline (bug fixes; "no loss").
+
+Notes
+- First time SGAT beats TRF+EA at every decision length after Holm correction
+  (all p_holm <= 0.017; before the fixes only 40 s).
+- Against CA-TCN: the 5-seed ensemble is level at 5 and 10 s; the single model
+  is about 1.5 points lower at 1, 2, 5 and 10 s. Our numbers use transductive EA
+  (CA-TCN does not), so this is parity at best, not state of the art.
+- The 1 s / 2 s half-window shift control is below chance (0.481 / 0.484,
+  p < 0.01). A 0.5 s / 1 s circular shift of a 1-8 Hz envelope leaves an
+  anti-correlated copy of the stimulus, so the control is not a clean null at
+  short windows (a shortcut would push it above chance). A trial-swap control at
+  1 s / 2 s is still needed.
+- Best epochs stay early and the fixed model's seed spread is 3x larger; both
+  point at noisy checkpoint selection from 2 val subjects. Round 10 tests weight
+  averaging (EMA) as the next single factor.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
