@@ -963,6 +963,66 @@ Notes
   Group maps should be averaged over seeds and reported with that spread.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-08
+Experiment: StimulusGAT under the CA-TCN / AADNet subject-independent protocol (seed 42, no EA)
+Sources:
+- notebooks/kaggle_run_dtu_loso_catcn_protocol.py (kernels
+  dulanamanjitha/loso-ca-tcn-protocol-a / -b, code at commit c155085); 4.9 h and
+  5.1 h GPU.
+- loso_catcn_{A,B}.json and 144 per-fold npz (Kaggle output; untracked).
+
+Method / Protocol
+- Folds from cv_splits.loso_attended_track_out, tested equal to AADNet's public
+  createSICrossValidation + trainLOSO split. For each test subject: KFold(8,
+  shuffle, random_state = subject index) over its 60 two-talker trials. Training
+  is the other 17 subjects minus trials whose attended wav is attended in the test
+  fold (42-71 trials excluded per fold; 759-782 kept). Validation is a random 20%
+  of those, from the same training subjects.
+- Model: round-9 corrected baseline WITHOUT Euclidean alignment (CA-TCN uses
+  none). 5 s training windows with a 2.5 s hop, up to 25 epochs, early stopping
+  with patience 5 on class-balanced val accuracy.
+- Scoring as AADNet's setWindowSize: decision windows of L s with 50% overlap; 1 s
+  and 2 s scored directly by the 5 s-trained model; L >= 5 s by summing 5 s logit
+  differences. Accuracy per fold, mean over 8 folds, mean over 18 subjects.
+- Pre-registered (notebook header): 95% bootstrap CI over subjects; "above" /
+  "below" CA-TCN if its published mean lies below / above our CI, else "level".
+  Controls at 5 s: subject Wilcoxon vs 0.5 p >= 0.05 and no subject >= 0.6.
+
+Results (mean over 18 subjects; single model)
+  L     ours    95% CI          CA-TCN  AADNet  Ridge   ours-CA-TCN  verdict
+  1 s   0.5603  [0.551, 0.570]  0.583   0.575   0.560   -0.023       below
+  2 s   0.6094  [0.592, 0.627]  0.634   0.621   0.601   -0.025       below
+  5 s   0.6781  [0.650, 0.706]  0.703   0.694   0.656   -0.025       level
+  10 s  0.7368  [0.702, 0.772]  0.767   0.758   0.702   -0.030       level
+  25 s  0.8247  [0.784, 0.864]  0.858   0.843   0.781   -0.033       level
+  50 s  0.8819  [0.838, 0.921]  0.925   0.909   0.836   -0.043       below
+  (20 s 0.8050, 40 s 0.8748; no published values.)
+- Controls at 5 s: shifted 0.497 (p = 0.23, max subject 0.524), swapped 0.500
+  (p = 0.81, max 0.538). Clean.
+- Training: best epoch median 6, epochs run median 11 (max 22, never the 25
+  cap); val balanced 0.718 (val is from training subjects).
+- Per subject at 5 s: S1 0.698, S2 0.682, S3 0.635, S4 0.695, S5 0.706, S6 0.609,
+  S7 0.791, S8 0.732, S9 0.638, S10 0.624, S11 0.538, S12 0.645, S13 0.725,
+  S14 0.735, S15 0.777, S16 0.630, S17 0.669, S18 0.675.
+
+DECISION (pre-registered): below CA-TCN at 1, 2 and 50 s; level at 5, 10 and
+25 s. Not state of the art under CA-TCN's protocol.
+
+Notes
+- The point estimate is below CA-TCN at every length (-2.3 to -4.3 points) and
+  below AADNet at every length. The "level" verdicts come from wide CIs (subject
+  SD 0.06-0.09 at L >= 5 s), not from parity.
+- Our story-disjoint parity with CA-TCN (round 9) needed EA and a 5-seed
+  ensemble. Without EA and as a single model, the extra training data here (17
+  subjects, most stories) does not make up the difference.
+- Remaining protocol differences from CA-TCN: we score 1 s / 2 s with a model
+  trained on 5 s windows; training hop 2.5 s (CA-TCN 75% overlap); early
+  stopping on balanced val accuracy (CA-TCN val loss) with a 25-epoch cap (not
+  reached); our preprocessing (1-31 Hz EEG, power-law sub-band envelope).
+- No EOG removal in either pipeline as far as AADNet's loader shows; see the
+  interpretability X1 entry for the frontal-polar occlusion result.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
