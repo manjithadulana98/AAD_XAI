@@ -20,6 +20,9 @@ def preprocess_eeg(eeg: np.ndarray, sfreq_in: float, cfg: PreprocessConfig) -> t
         Shape (n_channels, n_times_pp)
     sfreq_out : float
     """
+    # MNE wraps a float64 array without copying and filters it in place; copy so
+    # the caller's array is never modified (float32 input was always copied).
+    eeg = np.array(eeg, dtype=np.float64, copy=True)
     info = mne.create_info(ch_names=[f"Ch{i}" for i in range(eeg.shape[0])], sfreq=sfreq_in, ch_types="eeg")
     raw = mne.io.RawArray(eeg, info, verbose=False)
 
