@@ -1088,6 +1088,77 @@ Notes
   random edges in removal.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-09
+Experiment: Ocular control — is the attended talker decodable from the eye channels?
+Sources:
+- notebooks/kaggle_run_dtu_eog_control.py, src/aad_xai/data/ocular.py (kernel
+  dulanamanjitha/eog-ocular-control, version 2, code at commit 5e668fc). Kaggle
+  CPU, 50 min, no GPU quota.
+- eog_control.json and per-fold npz (Kaggle output; untracked).
+- Version 1 (commit 1761d55) stopped at an internal consistency check (float
+  sums near zero compared with a relative tolerance) after the gate and before
+  any decoding result. The check was replaced by an exact test (each fold's
+  training set equals the union of the summed classes). No pre-registered rule
+  changed.
+
+Method / Protocol
+- DTU external channels from the Zenodo 1199011 list (file labels EXG1-EXG8
+  confirmed): bipolar VEOG right (above - below), VEOG left, HEOG (right - left
+  canthus); mastoids; 64 scalp electrodes, average reference. EEG 1-8 Hz, 64 Hz.
+- Linear backward TRF of rounds 5-9 (lags 0-400 ms, 15-band power-law envelope,
+  alpha and raw/standardised variant by val correlation), WITHOUT EA, same 18
+  story-disjoint folds, 5 s test windows. Ridge statistics summed over 52
+  training classes (exact).
+- Arms: eog3 (primary), mastoid2, eeg64, eeg64_eogreg (EOG regressed out per
+  subject, label-free), eeg56_nofront (Fp1/Fpz/Fp2/AF7/AF3/AFz/AF4/AF8 removed).
+- Pre-registered rules in the notebook header (gate G1-G4, primary, secondary
+  with Holm over 2).
+
+Results
+- Gate PASS: G1 corr(VEOG_R, VEOG_L) 0.97; G2 |corr(VEOG, Fp)| 0.90; G3
+  |corr(HEOG, F8-F7)| 0.72; G4 mastoids next to their posterior-temporal
+  neighbours in 15/18 subjects.
+- EEG variance explained by the EOG channels (median over subjects): Fp1 0.80,
+  Fp2 0.80, Fpz 0.78, AF8 0.74, AF7 0.74, AF3 0.64, AFz 0.62, AF4 0.59, F7 0.42,
+  F5 0.38.
+- Accuracy (mean over 18 subjects; shift control in brackets):
+    arm            5 s            10 s           20 s           40 s
+    eog3           0.501 (0.495)  0.509 (0.494)  0.502 (0.488)  0.508 (0.498)
+    mastoid2       0.534 (0.495)  0.550 (0.491)  0.560 (0.493)  0.580 (0.503)
+    eeg64          0.657 (0.504)  0.699 (0.501)  0.752 (0.511)  0.810 (0.511)
+    eeg64_eogreg   0.673 (0.499)  0.723 (0.501)  0.780 (0.514)  0.844 (0.504)
+    eeg56_nofront  0.657 (0.502)  0.705 (0.501)  0.760 (0.513)  0.822 (0.513)
+- Primary: eog3 at 5 s 0.5013 (SD 0.026, 95% t-CI [0.488, 0.514]); > 0.5
+  p = 0.49; shift 0.495 (p = 0.41). No subject above 0.58.
+- Secondary (5 s, eeg64 minus arm): eeg64_eogreg -0.0161 (EOG regression
+  higher in 15/18 subjects; p = 0.0035, Holm p = 0.007); eeg56_nofront +0.0004
+  (9/18; p = 0.57, Holm p = 0.57).
+- Mastoid2 0.534 (> 0.5, p = 0.0007): two channels with auditory cortical
+  signal do decode above chance, so the eye-channel null is not a channel-count
+  artefact.
+
+DECISION (pre-registered): no evidence that the attended talker is decodable
+from the eye channels with a linear decoder. A linearly decodable ocular effect
+larger than about 1.4 points is ruled out at 5 s.
+
+Notes
+- The frontal-polar electrodes are mostly eye activity (about 80% of their
+  variance), and for a linear decoder that activity is noise: regressing it out
+  IMPROVES the decoder by 1.6 points at 5 s and 3.4 points at 40 s; dropping
+  the 8 frontal electrodes changes nothing.
+- So the X1 occlusion map (Fp/AF first) most likely reflects StimulusGAT
+  depending on high-variance, eye-dominated channels rather than reading
+  attention from eye movements, in line with the level-3 finding that
+  occlusion flags channels the model depends on without carrying attention
+  information. Not shown for StimulusGAT itself: a nonlinear model could in
+  principle use ocular information that a linear decoder cannot. The direct
+  test is StimulusGAT trained and evaluated on EOG-regressed EEG.
+- Candidate accuracy round (preprocessing, not architecture): EOG regression
+  before StimulusGAT and before the TRF baseline. It needs the EOG channels at
+  test time and fits regression weights on the test subject's unlabelled data
+  (label-free, like EA; to be declared).
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
