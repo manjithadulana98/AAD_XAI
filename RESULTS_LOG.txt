@@ -1023,6 +1023,71 @@ Notes
   interpretability X1 entry for the frontal-polar occlusion result.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-09
+Experiment: Interpretability level 3 — planted ground truth (synthetic EEG)
+Sources:
+- notebooks/kaggle_run_xai_level3.py, src/aad_xai/data/planted_sources.py (kernel
+  dulanamanjitha/xai-level3-planted-ground-truth, run at commit 11b132e; generator
+  and rules from fdc7f8e). 2.0 h GPU.
+- xai_level3.json (Kaggle output; untracked).
+
+Method / Protocol
+- Simulated DTU-like EEG (18 subjects; 1/f background with volume conduction,
+  posterior alpha, average reference). Attended envelope through a per-subject
+  TRF, band-passed, planted on 6 electrodes: delta 1-4 Hz around T7, or theta
+  4-8 Hz around P8. Decoy: Cz responds equally to both envelopes at 0 dB
+  (stimulus-driven, attention-blind). Null: decoy only.
+- Round-9 StimulusGAT recipe unchanged, story-disjoint fold sgso_g0_k0, EA.
+- Pre-registered rules in the notebook header (deck slide B17): main SNR = lowest
+  sweep SNR with median accuracy >= 0.70 in both conditions; validity gates V1-V3;
+  electrode AUROC >= 0.9; decoy never in the top 6; planted band first in >= 90%
+  of seeds; edge AUROC >= 0.9.
+
+Results
+- Sweep: median test accuracy 1.000 at every SNR (-20, -15, -10, -5 dB), so the
+  main SNR is -20 dB. Validity: V1 accuracy 1.000; V2 band-stop ranks the planted
+  band first in 10/10 seeds in both conditions; V3 planted-edge removal drops the
+  margin more than random edges (delta 0.200 vs 0.027, p = 0.003; theta 0.137 vs
+  0.023, p = 0.002). Valid.
+- Electrodes (median AUROC, delta_T7 / theta_P8):
+    occlusion (zero)     1.000 / 1.000  PASS
+    occlusion (permute)  0.989 / 0.994  PASS
+    IG                   1.000 / 1.000  PASS
+    attention            0.599 / 0.632  FAIL
+- Decoy (main SNR): every method PASSES (Cz never in the top 6). Best Cz rank 7
+  for zero-occlusion and IG, 33 for permute-occlusion, 10 for attention.
+- Bands: band-power IG ranks the planted band first in 0% of seeds in both
+  conditions. FAIL. (Band-stop: 100%, gate V2.)
+- Edges (median AUROC): attention 0.637 / 0.670, attention x gradient
+  0.585 / 0.570. Both FAIL.
+- Null: accuracy 0.496 / 0.500 / 0.496 (chance).
+
+DECISION (pre-registered): occlusion and IG recover planted electrodes and are
+not fooled by the decoy at the main SNR. Attention fails as an electrode and as
+an edge explanation. Band-power IG fails; band-stop recovers the planted band.
+
+Notes
+- CEILING: the model is at 100% accuracy at every SNR in the sweep. Real DTU
+  data is at about 0.69 (5 s). The planted response is band-limited and the
+  background broadband, so the in-band SNR is far above the nominal one. The
+  rule picked the lowest SNR tested, but the benchmark does not reach the
+  realistic difficulty regime. These results are an upper bound. A follow-up
+  sweep at lower SNR (about -40 to -25 dB) should find where accuracy is about
+  0.70 and repeat the electrode and decoy tests there.
+- Decoy depends on SNR (sweep, descriptive). At -10 and -5 dB both occlusion
+  variants put the attention-blind Cz in their top 6 in 12/12 runs (rank 1-6);
+  IG ranks it last (64) in all 12. At -20 dB occlusion ranks it last. So
+  occlusion can flag a channel the model depends on but that carries no
+  attention information. This bears on the real-data X1 result: occlusion ranks
+  frontal-polar electrodes first while IG ranks fronto-central/temporal sites.
+  Occlusion measures what the output depends on, which need not be where the
+  attended-speech signal is.
+- Band and edge results agree with the real-data X1 run: band-power IG is not a
+  valid band explanation, band-stop is; attention-based edge scores do not
+  identify the edges the model needs (V3), although on real data they beat
+  random edges in removal.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
