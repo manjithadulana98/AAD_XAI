@@ -4,7 +4,9 @@ from __future__ import annotations
 import numpy as np
 
 from aad_xai.config import PreprocessConfig
-from aad_xai.data.ocular import DTU_EXG, N_SCALP, dtu_derivations, fit_eog_regression, regress_out
+from aad_xai.data.base import Trial
+from aad_xai.data.ocular import (DTU_EXG, N_SCALP, dtu_derivations, fit_eog_regression, regress_eog_trials,
+                                 regress_out)
 from aad_xai.data.preprocessing import preprocess_eeg
 
 
@@ -63,3 +65,59 @@ def test_regression_removes_the_ocular_part_and_keeps_the_rest():
     assert clean.shape == eeg.shape
     assert np.abs(np.corrcoef(np.vstack([clean, eog]))[:10, 10:]).max() < 0.05
     assert np.corrcoef(clean[0], neural[0])[0, 1] > 0.99
+
+
+def _ocular_trials(rng, subjects=("S1", "S2"), n_trials=3, T=4000, C=8):
+    """Trials whose EEG = neural + subject-specific mix of the EOG; returns trials, eog, mixes, neural."""
+    trials, eog, mixes, neural = [], {}, {}, {}
+    for s in subjects:
+        mixes[s] = rng.standard_normal((3, C)) * 3
+        for k in range(n_trials):
+            tid = f"{s}_t{k}"
+            e = rng.standard_normal((3, T)) * 4
+            n = rng.standard_normal((C, T))
+            eog[tid], neural[tid] = e, n
+            trials.append(Trial(eeg=(n + mixes[s].T @ e).astype(np.float32), sfreq=64.0, label=k % 2,
+                                subject_id=s, trial_id=tid, group_id=f"g{k}"))
+    return trials, eog, mixes, neural
+
+
+def test_trial_regression_uses_each_subjects_own_weights():
+    rng = np.random.default_rng(5)
+    trials, eog, mixes, neural = _ocular_trials(rng)
+    out = regress_eog_trials(trials, eog)
+    assert [t.trial_id for t in out] == [t.trial_id for t in trials]
+    for t, u in zip(trials, out):
+        assert u.eeg.shape == t.eeg.shape and u.eeg.dtype == t.eeg.dtype
+        assert (u.label, u.subject_id, u.group_id) == (t.label, t.subject_id, t.group_id)
+        r = np.corrcoef(np.vstack([u.eeg, eog[t.trial_id]]))[:-3, -3:]                 # (C, 3)
+        assert np.abs(r).max() < 0.06
+        assert min(np.corrcoef(a, b)[0, 1] for a, b in zip(u.eeg, neural[t.trial_id])) > 0.99
+
+
+def test_trial_regression_is_fitted_only_on_the_trials_it_is_given():
+    """A subject's result does not depend on other subjects' trials, and equals a fit on
+    exactly that subject's trials in the list (split isolation)."""
+    rng = np.random.default_rng(6)
+    trials, eog, _, _ = _ocular_trials(rng)
+    s1 = [t for t in trials if t.subject_id == "S1"]
+    alone = regress_eog_trials(s1, eog)
+    mixed = [u for u in regress_eog_trials(trials, eog) if u.subject_id == "S1"]
+    for a, b in zip(alone, mixed):
+        np.testing.assert_allclose(a.eeg, b.eeg, rtol=1e-6, atol=1e-6)
+    # Fitting on a subset of S1's trials gives different weights (it really uses only those).
+    sub = regress_eog_trials(s1[:1], eog)[0]
+    B_all = fit_eog_regression(np.concatenate([t.eeg for t in s1], 1), np.concatenate([eog[t.trial_id] for t in s1], 1))
+    np.testing.assert_allclose(sub.eeg, regress_out(s1[0].eeg, eog[s1[0].trial_id],
+                                                    fit_eog_regression(s1[0].eeg, eog[s1[0].trial_id])), atol=1e-5)
+    assert not np.allclose(sub.eeg, regress_out(s1[0].eeg, eog[s1[0].trial_id], B_all), atol=1e-7)
+
+
+def test_trial_regression_rejects_missing_or_misaligned_eog():
+    rng = np.random.default_rng(7)
+    trials, eog, _, _ = _ocular_trials(rng, subjects=("S1",), n_trials=1)
+    import pytest
+    with pytest.raises(KeyError):
+        regress_eog_trials(trials, {})
+    with pytest.raises(ValueError):
+        regress_eog_trials(trials, {trials[0].trial_id: eog[trials[0].trial_id][:, :-1]})

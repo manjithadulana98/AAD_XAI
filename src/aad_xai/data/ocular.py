@@ -14,7 +14,12 @@ corneo-retinal dipole and lid artefacts.
 """
 from __future__ import annotations
 
+import dataclasses
+from typing import Mapping, Sequence
+
 import numpy as np
+
+from .base import Trial
 
 N_SCALP = 64
 N_DTU_WITH_EXG = 72                 # scalp + ExG; the status column is dropped
@@ -82,3 +87,39 @@ def regress_out(eeg: np.ndarray, ref: np.ndarray, B: np.ndarray) -> np.ndarray:
     """EEG minus its reference-explained part: (C, T) - B.T @ ref; the intercept stays."""
     eeg, ref = np.asarray(eeg), np.asarray(ref)
     return (eeg - (np.asarray(B).T @ ref)).astype(eeg.dtype, copy=False)          # (C, T)
+
+
+def regress_eog_trials(trials: Sequence[Trial], eog: Mapping[str, np.ndarray]) -> list[Trial]:
+    """EOG regression with weights fitted per subject on the given trials only.
+
+    Like ``euclidean_align``, call it separately for the train, val and test
+    trials of a fold, so that no split informs another. Uses EEG and EOG only
+    (no labels, no audio); for held-out subjects it is transductive.
+
+    Parameters
+    ----------
+    trials : sequence of Trial, each ``eeg`` (C, T_i)
+    eog    : {trial_id: (R, T_i)} reference channels on the same samples
+
+    Returns
+    -------
+    New Trial objects in the same order. Only ``eeg`` changes: (C, T_i), same
+    dtype, minus the part that the subject's EOG explains (B fitted on all of
+    that subject's trials in ``trials``, concatenated in time).
+    """
+    by_subject: dict[str, list[int]] = {}
+    for i, t in enumerate(trials):
+        if t.trial_id not in eog:
+            raise KeyError(f"no EOG for trial {t.trial_id}")
+        if np.shape(eog[t.trial_id])[1] != t.eeg.shape[1]:
+            raise ValueError(f"trial {t.trial_id}: EOG {np.shape(eog[t.trial_id])} vs EEG {t.eeg.shape}")
+        by_subject.setdefault(t.subject_id, []).append(i)
+
+    out: list[Trial | None] = [None] * len(trials)
+    for idx in by_subject.values():
+        B = fit_eog_regression(np.concatenate([trials[i].eeg for i in idx], axis=1),          # (C, sum T)
+                               np.concatenate([eog[trials[i].trial_id] for i in idx], axis=1))  # (R, sum T)
+        for i in idx:                                                                          # B: (R, C)
+            t = trials[i]
+            out[i] = dataclasses.replace(t, eeg=regress_out(t.eeg, eog[t.trial_id], B))
+    return out  # type: ignore[return-value]

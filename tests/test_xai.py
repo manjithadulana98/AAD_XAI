@@ -87,12 +87,12 @@ class TestPerturbations:
         np.testing.assert_array_equal(out[:, i0:i1], 0.0)
 
     def test_remove_channel_group(self):
-        eeg = np.random.randn(16, 128)
+        eeg = np.random.randn(128, 16)                    # (T, C), the function's convention
         out = remove_channel_group(eeg, ch_idx=[0, 3, 7])
-        np.testing.assert_array_equal(out[0], 0.0)
-        np.testing.assert_array_equal(out[3], 0.0)
-        np.testing.assert_array_equal(out[7], 0.0)
-        assert not np.allclose(out[1], 0.0)
+        np.testing.assert_array_equal(out[:, 0], 0.0)
+        np.testing.assert_array_equal(out[:, 3], 0.0)
+        np.testing.assert_array_equal(out[:, 7], 0.0)
+        assert not np.allclose(out[:, 1], 0.0)
 
 
 class TestLRP:
