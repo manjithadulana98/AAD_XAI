@@ -55,6 +55,16 @@ for name, info in sorted(manifest["files"].items()):
     assert h.hexdigest() == info["md5"], f"{name}: md5 changed since the fetch"
 print(f"md5 re-checked for {sum((ROOT / n).exists() for n in manifest['files'])} files")
 
+# The manifest holds the md5 of stimuli.zip, which was verified and unpacked at fetch time.
+# Record a fingerprint of the unpacked wavs so later notebooks can assert the same audio.
+wav_md5 = {}
+for w in sorted((ROOT / "stimuli").glob("*.wav")):
+    wav_md5[w.name] = hashlib.md5(w.read_bytes()).hexdigest()
+fingerprint = hashlib.md5("".join(f"{k}:{v};" for k, v in sorted(wav_md5.items())).encode()).hexdigest()
+print(f"{len(wav_md5)} wavs; stimuli fingerprint (md5 over sorted name:md5 pairs): {fingerprint}")
+for k, v in wav_md5.items():
+    print(f"  {k:32s} {v}")
+
 # %%
 def _s(x):
     """MATLAB char / cell leaf -> str."""

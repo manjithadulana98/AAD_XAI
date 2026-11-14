@@ -51,8 +51,13 @@ def _content_group(trial: Trial) -> int:
     """Map a KUL trial to its underlying story-content group (1-4).
 
     - Experiments 1 & 2: parts 1-4 map directly to content groups 1-4.
-    - Experiment 3: 12 short repetition segments, 3 per original part.
-      parts 1-3 -> CG 1, parts 4-6 -> CG 2, 7-9 -> CG 3, 10-12 -> CG 4.
+    - Experiment 3: 12 short repetition segments. Their ``part`` field is the
+      presentation index 1-12, and the stimuli cycle through the four parts:
+      presentation p plays ``rep_part{(p - 1) % 4 + 1}``, so 1, 5, 9 -> CG 1,
+      2, 6, 10 -> CG 2, 3, 7, 11 -> CG 3, 4, 8, 12 -> CG 4. Verified against the
+      stimulus file names of all 192 experiment-3 trials (16 subjects) in the
+      Zenodo 4004271 v2.0 release (kernel kul-aad-structure-check). An earlier
+      version used ceil(part / 3), which was wrong for 128 of the 192 trials.
 
     The group_id format from the KUL loader is usually:
         ``{subject}_exp{E}_p{P}_rep{R}_{condition}``
@@ -67,8 +72,7 @@ def _content_group(trial: Trial) -> int:
 
     if exp in (1, 2):
         return part            # already 1-4
-    else:  # exp 3
-        return math.ceil(part / 3)  # 1-3->1, 4-6->2, 7-9->3, 10-12->4
+    return (part - 1) % 4 + 1  # exp 3: presentation index 1-12 -> rep_part 1-4
 
 
 def _condition(trial: Trial) -> str:
@@ -513,6 +517,31 @@ def dtu_content_group(trial: Trial) -> int | None:
     """
     wav = trial.group_id.split("_", 1)[1]
     return DTU_MALE_STORY_TO_CONTENT_GROUP.get(wav.split("_trial")[0])
+
+
+# KUL: every experiment-1/2 trial plays part p (1-4) of two stories, track 1 and
+# track 2. Each story is split into two consecutive parts, so parts {1, 2} and
+# {3, 4} hold different story pairs; these are the story folds for the external
+# test (docs/preregistration_kul_external_test.md).
+KUL_STORY_FOLDS: tuple[tuple[int, ...], ...] = ((1, 2), (3, 4))
+
+
+def kul_story_part(trial: Trial) -> int | None:
+    """KUL story part (1-4) of an experiment-1/2 trial; None for experiment 3.
+
+    Experiment-3 repetitions replay the first two minutes of the parts and all
+    attend track 1, so the external-test protocol leaves them out; returning
+    None makes ``subject_group_story_out`` drop them even if they were loaded.
+    Parses the KUL loader's group_id ``{subject}_exp{E}_p{P}_rep{R}_{condition}``.
+    """
+    tokens = trial.group_id.split("_")
+    exp = int(next(t for t in tokens if t.startswith("exp"))[3:])
+    if exp not in (1, 2):
+        return None
+    part = int(next(t for t in tokens[1:] if t.startswith("p") and t[1:].isdigit())[1:])
+    if not 1 <= part <= 4:
+        raise ValueError(f"unexpected KUL part {part} in {trial.group_id!r}")
+    return part
 
 
 def subject_group_story_out(

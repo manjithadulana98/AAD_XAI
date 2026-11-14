@@ -107,3 +107,61 @@ def cross_trial_permutation(trial_ids) -> np.ndarray:
     perm = np.empty(len(trial_ids), dtype=int)
     perm[order] = np.roll(order, -int(counts.max()))
     return perm
+
+
+def same_stratum_other_content_partners(trial_keys: dict) -> dict:
+    """Partner trial for the content-disjoint trial-swap control.
+
+    Parameters
+    ----------
+    trial_keys : {trial_id: (subject, stratum, content)}
+        For KUL: (subject, experiment, story part).
+
+    Returns
+    -------
+    {trial_id: partner_trial_id}: the unique trial of the same subject and
+    stratum whose content differs. Raises ValueError unless exactly one such
+    trial exists for every trial, so the pairing is never ambiguous and never
+    plays the same audio.
+    """
+    out = {}
+    for tid, (subj, stratum, content) in trial_keys.items():
+        cands = [o for o, (s, st, c) in trial_keys.items()
+                 if o != tid and s == subj and st == stratum and c != content]
+        if len(cands) != 1:
+            raise ValueError(f"trial {tid}: {len(cands)} same-subject, same-stratum trials of other content")
+        out[tid] = cands[0]
+    return out
+
+
+def partner_trial_permutation(trial_ids, starts, partner: dict) -> np.ndarray:
+    """Permutation pairing every window with the window at the same position in its partner trial.
+
+    Window i is the r-th window of trial t (by start). It is paired with the
+    (r mod n)-th window of ``partner[t]``, where n is the partner's window
+    count, so a shorter partner wraps round.
+
+    Parameters
+    ----------
+    trial_ids, starts : sequences of length N (one per window)
+    partner : {trial_id: partner_trial_id}, partner != trial
+
+    Returns
+    -------
+    (N,) int array ``perm``; window i is paired with window ``perm[i]``.
+    """
+    trial_ids = np.asarray(trial_ids)
+    starts = np.asarray(starts)
+    by_trial: dict = {}
+    for i, t in enumerate(trial_ids):
+        by_trial.setdefault(t, []).append(i)
+    ranked = {t: sorted(idx, key=lambda i: starts[i]) for t, idx in by_trial.items()}
+    perm = np.empty(len(trial_ids), dtype=int)
+    for t, idx in ranked.items():
+        p = partner.get(t)
+        if p is None or p == t or p not in ranked:
+            raise ValueError(f"trial {t}: partner {p!r} missing, identical, or without windows")
+        target = ranked[p]
+        for r, i in enumerate(idx):
+            perm[i] = target[r % len(target)]
+    return perm

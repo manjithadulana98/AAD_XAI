@@ -1,7 +1,8 @@
 # Pre-registration: external held-out test of StimulusGAT on the KU Leuven AAD dataset
 
-**Status: DRAFT, not frozen.** The freeze is the commit that changes this line to FROZEN and adds
-the analysis script (section 9). No notebook decodes attention on KUL before that commit.
+**Status: FROZEN on 2026-11-15**, in the commit that set this line and added the notebooks and
+the analysis script (section 9). No notebook had decoded attention on KUL before that commit.
+Nothing in sections 2–8 changes after the runs start. Any deviation is reported in RESULTS_LOG.
 
 ## 1. Question
 
@@ -29,7 +30,10 @@ KUL is a harder transfer than another DTU split:
 **Source**
 - Zenodo record 4004271, version 2.0, CC-BY-NC-SA 4.0.
 - Fetched by the private Kaggle kernel `kul-aad-dataset-fetch`. All 19 files matched Zenodo's published MD5 checksums.
-- The kernel `kul-aad-structure-check` re-checked the MD5s and recorded the design facts used below.
+- The fetch output was saved as the private Kaggle dataset `dulanamanjitha/kul-dataset`.
+- The kernel `kul-aad-structure-check` (version 2, run on that dataset) re-checked the MD5s and recorded the design facts used below.
+  - It also recorded a fingerprint of the 32 unpacked wav files: `853dd5093a3d88b2209fc72db741067f`.
+  - Every decoding notebook asserts both the MD5s and this fingerprint before loading.
 - Neither kernel decodes anything.
 
 **Trials used: experiments 1 and 2 only.** That is 8 trials of about 6.5 min per subject, so about 52 min for each of the 16 subjects.
@@ -96,7 +100,9 @@ KUL is a harder transfer than another DTU split:
 - Backward ridge decoder on 1–8 Hz EEG at 64 Hz, lags 0–400 ms, 15-band power-law envelope targets.
 - Ridge alpha (grid 1 to 1e9) and the raw / standardised variant chosen per fold by validation correlation.
 - EA per subject per split.
-- Same folds and test windows as StimulusGAT, same long-window decision rule.
+- Same folds and 5 s test windows as StimulusGAT.
+- Decisions at 10, 20 and 40 s recompute the correlation over the whole window. This is the standard rule for a linear decoder, and on DTU it is the TRF's own rule.
+- The summed-score rule is reported descriptively.
 
 ## 4. Split
 
@@ -115,9 +121,15 @@ KUL is a harder transfer than another DTU split:
 
 ## 5. Runs
 
-- StimulusGAT: two GPU kernels, part A (seeds 42, 1, 2) and part B (seeds 3, 4), about 6 GPU-h in total.
-- TRF + EA: one CPU kernel.
-- All three save per-window test, val and control logits, fold metadata and checkpoints.
+- StimulusGAT: `notebooks/kaggle_run_kul_external_sgat.py`.
+  - Two GPU kernels: part A (seeds 42, 1, 2) and part B (seeds 3, 4), about 6 GPU-h in total.
+- TRF + EA: `notebooks/kaggle_run_kul_external_trf.py`, one CPU kernel.
+- All three save, for every fold:
+  - per-window test and validation outputs and the control outputs;
+  - the fold metadata;
+  - checkpoints (StimulusGAT) or weights (TRF);
+  - each trial's design information.
+- Analysis: `scripts/analyse_kul_external.py <part A dir> <part B dir> <TRF dir>`, run once on the downloaded outputs.
 
 ## 6. Confirmatory analysis
 
@@ -126,6 +138,7 @@ Subjects are the unit of analysis (n = 16). All tests are two-sided Wilcoxon sig
 **H1 (above chance).** At 5 s, the ensemble's per-subject accuracy is above 0.5 (one-sided Wilcoxon, p < 0.05).
 
 **H2 (vs the linear baseline).** Ensemble minus TRF + EA at 5, 10, 20 and 40 s, with Holm correction over the 4 lengths. The outcome is decided by these rules, applied in order:
+- **"mixed":** there are Holm-significant differences (p < 0.05) in both directions;
 - **"better":** the difference is positive with Holm p < 0.05 at one or more lengths, and the mean difference is ≥ −0.5 points at every length;
 - **"worse":** the difference is negative with Holm p < 0.05 at one or more lengths;
 - **"no difference":** neither of the above.
@@ -141,7 +154,9 @@ Subjects are the unit of analysis (n = 16). All tests are two-sided Wilcoxon sig
 ## 7. Pre-specified descriptive checks (no decision attached)
 
 - **Narrator bias.** Per subject, the share of test windows where the model picks the track-1 narrator. Expected 0.5. Wilcoxon vs 0.5 reported.
-- **Side bias.** The share of windows where the model picks the left candidate. It is 0.5 by construction, because the same network scores both candidates, so any deviation would point to a bug.
+- **Side bias.** The share of windows where the model picks the left candidate.
+  - Expected 0.5: the same network scores both candidates, and each ear carries track 1 and track 2 equally often.
+  - A clear deviation would point to a bug or to an asymmetry in the stimuli.
 - **Accuracy by condition.** Dry vs HRTF, per subject.
 - **Single-model results.** Mean single-seed accuracy at 1, 2, 5 and 10 s, and ensemble accuracy at 1 and 2 s.
 - **DTU vs KUL.** The per-subject table, and the KUL ensemble-minus-TRF gap next to the DTU round-9 gap.
@@ -152,26 +167,34 @@ Subjects are the unit of analysis (n = 16). All tests are two-sided Wilcoxon sig
 - **No retuning on KUL.** No configuration is changed after any KUL result is seen. Any later KUL analysis is labelled exploratory: for example, adding experiment 3, tuning on KUL, or an interpretability comparison.
 - **Every outcome is reported**, in RESULTS_LOG and in the thesis.
 
-## 9. Work before the freeze (none of it touches the model)
+## 9. Implementation, completed before the freeze (none of it touches the model)
 
-1. **KUL loader.**
-   - Build HRTF trials' envelopes from the dry files.
-   - Record each trial's part, and which track is on each ear.
-   - Unit tests.
-2. **Content groups.**
-   - Add `kul_content_group` (part from the stimulus file name; None for experiment 3) and `KUL_STORY_FOLDS = ((1, 2), (3, 4))`.
-   - Fix `cv_splits._content_group`. It maps experiment-3 trials to `ceil(part / 3)`, which matches the audio actually played in only 64 of 192 trials.
+1. **KUL loader** (`aad_xai.data.kul_dataset`).
+   - `envelope_source="dry"` builds HRTF trials' envelopes from the dry files.
+   - `trial_info` records, per trial: experiment, part, condition, attended ear and track, the files presented and the files used for envelopes, and the track on each ear.
+   - Multi-band envelopes are truncated along the time axis.
+   - The experiment filter now runs before EEG preprocessing.
+   - Unit tests in `tests/test_kul_external.py`.
+2. **Content groups** (`aad_xai.data.cv_splits`).
+   - Added `kul_story_part` (part 1–4 for experiments 1 and 2; None for experiment 3) and `KUL_STORY_FOLDS = ((1, 2), (3, 4))`.
+   - Fixed `_content_group` for experiment 3. The old `ceil(part / 3)` matched the audio played in only 64 of 192 trials; it is now `(part − 1) mod 4 + 1`.
      - This protocol does not use experiment 3, so the fix does not affect it.
      - None of the logged KUL results used this function with experiment 3.
-   - Unit tests.
-3. **KUL trial-swap permutation** (section 6). Unit tests, including "swapped audio never comes from the same part".
-4. **Notebooks.**
-   - StimulusGAT parts A and B, and TRF + EA.
-   - Data-check assertions: 16 subjects × 8 trials, 64 channels at 128 Hz, channel order, each part twice per subject, attended track balanced, dry envelopes.
-   - Smoke-tested on fake KUL-shaped data.
-5. **Offline analysis script** implementing sections 6 and 7.
-   - Tested on fake runs: a null case where the predictions carry no information, and a flipped case where they are reversed.
-   - Committed with the freeze.
+   - Unit tests cover the 16-fold split: every trial tested once, 12 training subjects, held-out halves.
+3. **KUL trial-swap permutation** (`aad_xai.data.negatives`): `same_stratum_other_content_partners` and `partner_trial_permutation`.
+   - Unit tests cover the pairing, the wrap-round, and rejection of ambiguous or self pairings.
+   - The notebooks also assert, for every fold, that no swapped window plays the same part.
+4. **Notebooks** (section 5).
+   - Data-check assertions: Zenodo MD5s, the stimuli fingerprint, channel order, 16 subjects × 8 trials, 64 channels, each part twice per subject with each track attended once, and dry envelopes.
+   - Smoke-tested end to end on a fake 16-subject KUL release (1 epoch).
+5. **Offline analysis script** (`scripts/analyse_kul_external.py`), implementing sections 6 and 7.
+   - Tested in `tests/test_analyse_kul_external.py` on synthetic outputs in the notebooks' format:
+     - a null case;
+     - a strong model with a weak baseline;
+     - leaky controls, which block the claim;
+     - a stronger baseline;
+     - the outcome-rule edge cases;
+     - a tampered swap, which the integrity check catches.
 
 ## 10. Known limitations
 

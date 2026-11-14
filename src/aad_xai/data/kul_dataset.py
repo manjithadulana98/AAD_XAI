@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterator, Optional, Literal, Sequence
 import logging
+import re
 
 import numpy as np
 import scipy.io
@@ -97,6 +98,29 @@ def _load_wav_envelope(
 
 
 # --------------------------------------------------------------------------- #
+#  Stimulus file names
+# --------------------------------------------------------------------------- #
+
+# e.g. part3_track2_hrtf.wav, rep_part1_track1_dry.wav
+_STIM_NAME = re.compile(r"^(?P<rep>rep_)?part(?P<part>\d+)_track(?P<track>[12])_(?P<cond>dry|hrtf)\.wav$")
+_HRTF_SUFFIX = re.compile(r"_hrtf\.wav$")
+
+
+def _stimulus_fields(left_wav: str, right_wav: str) -> dict:
+    """Story part and track on each ear, parsed from the two stimulus file names.
+
+    Both files of a trial are the two tracks of the same story part.
+    Raises ValueError for names outside the KUL convention.
+    """
+    m_l, m_r = _STIM_NAME.match(left_wav), _STIM_NAME.match(right_wav)
+    if m_l is None or m_r is None:
+        raise ValueError(f"unexpected KUL stimulus names: {left_wav!r}, {right_wav!r}")
+    if (m_l["rep"], m_l["part"]) != (m_r["rep"], m_r["part"]) or m_l["track"] == m_r["track"]:
+        raise ValueError(f"left/right stimuli are not the two tracks of one part: {left_wav!r}, {right_wav!r}")
+    return {"story_part": int(m_l["part"]), "left_track": int(m_l["track"]), "right_track": int(m_r["track"])}
+
+
+# --------------------------------------------------------------------------- #
 #  KULeuven dataset
 # --------------------------------------------------------------------------- #
 
@@ -130,6 +154,18 @@ class KULeuvenDataset(BaseDataset):
         If *True* (default), compute speech envelopes from WAV files.
         Set to *False* for a fast load when only EEG is needed (e.g.
         CNN training where audio_a/audio_b are unused).
+    envelope_source : {"presented", "dry"}
+        "presented" (default, historical behaviour) computes each envelope
+        from the file named in the trial's ``stimuli`` field, i.e. the
+        ``*_hrtf.wav`` file for HRTF trials. "dry" always uses the clean
+        ``*_dry.wav`` version of that stimulus, as the dataset README
+        prescribes for envelope extraction.
+
+    After (or during) iteration, :attr:`trial_info` maps every yielded
+    ``trial_id`` to its design metadata: experiment, part, repetition,
+    condition, attended ear and track, the left / right stimulus files as
+    presented and as used for the envelopes, the track on each ear, and the
+    story part read from the stimulus file name.
     """
 
     def __init__(
@@ -137,16 +173,21 @@ class KULeuvenDataset(BaseDataset):
         root: str | Path,
         preprocess: Optional[PreprocessConfig] = None,
         load_audio: bool = True,
-        envelope_method: Literal["hilbert", "powerlaw_subbands"] = "hilbert",
+        envelope_method: Literal["hilbert", "powerlaw_subbands", "powerlaw_subbands_multi"] = "hilbert",
         include_experiments: Optional[Sequence[int]] = None,
+        envelope_source: Literal["presented", "dry"] = "presented",
     ):
+        if envelope_source not in ("presented", "dry"):
+            raise ValueError(f"envelope_source must be 'presented' or 'dry', got {envelope_source!r}")
         self.root = Path(root)
         self.preprocess = preprocess
         self.load_audio = load_audio
         self.envelope_method = envelope_method
         self.include_experiments = tuple(include_experiments) if include_experiments is not None else None
+        self.envelope_source = envelope_source
         # Envelope cache keyed by WAV filename (shared across subjects)
         self._env_cache: dict[str, np.ndarray] = {}
+        self.trial_info: dict[str, dict] = {}
 
     # ------------------------------------------------------------------
     def trials(self) -> Iterator[Trial]:
@@ -196,6 +237,11 @@ class KULeuvenDataset(BaseDataset):
         for idx in range(n_trials):
             ts = trials_arr[0, idx] if trials_arr.ndim == 2 else trials_arr[idx]
 
+            # Filter by experiment before the (costly) EEG preprocessing.
+            experiment = int(ts["experiment"][0, 0].flat[0])
+            if self.include_experiments is not None and experiment not in self.include_experiments:
+                continue
+
             # ---- EEG ----
             raw_data = ts["RawData"][0, 0]
             eeg = np.asarray(raw_data["EegData"][0, 0], dtype=np.float64)  # (time, ch)
@@ -220,13 +266,9 @@ class KULeuvenDataset(BaseDataset):
             label = 0 if attended_ear == "L" else 1
 
             # ---- Metadata for leakage control ----
-            experiment = int(ts["experiment"][0, 0].flat[0])
             part = int(ts["part"][0, 0].flat[0])
             repetition = int(ts["repetition"][0, 0].flat[0])
             condition = str(ts["condition"][0, 0].flat[0])
-
-            if self.include_experiments is not None and experiment not in self.include_experiments:
-                continue
 
             trial_id = f"{subject_id}_T{idx:03d}"
             # Keep subject-prefixed group id for compatibility with existing
@@ -234,23 +276,35 @@ class KULeuvenDataset(BaseDataset):
             # handled explicitly in CV strategies.
             group_id = f"{subject_id}_exp{experiment}_p{part}_rep{repetition}_{condition}"
 
+            stim = ts["stimuli"][0, 0]  # (2, 1) object array
+            left_wav_name = str(stim[0, 0].flat[0])   # left-ear stimulus
+            right_wav_name = str(stim[1, 0].flat[0])  # right-ear stimulus
+            left_env_name = self._envelope_wav_name(left_wav_name)
+            right_env_name = self._envelope_wav_name(right_wav_name)
+            info = {
+                "subject": subject_id, "experiment": experiment, "part": part,
+                "repetition": repetition, "condition": condition,
+                "attended_ear": attended_ear,
+                "attended_track": int(np.asarray(ts["attended_track"][0, 0]).flat[0]),
+                "left_wav": left_wav_name, "right_wav": right_wav_name,
+                "left_envelope_wav": left_env_name, "right_envelope_wav": right_env_name,
+            }
+            info.update(_stimulus_fields(left_wav_name, right_wav_name))
+            self.trial_info[trial_id] = info
+
             # ---- Audio envelopes ----
             audio_a: Optional[np.ndarray] = None
             audio_b: Optional[np.ndarray] = None
 
             if self.load_audio and stimuli_dir.exists():
-                stim = ts["stimuli"][0, 0]  # (2, 1) object array
-                left_wav_name = str(stim[0, 0].flat[0])   # left-ear stimulus
-                right_wav_name = str(stim[1, 0].flat[0])   # right-ear stimulus
-
                 n_times = eeg.shape[1]
                 bp = self.preprocess.envelope_band if self.preprocess else (1.0, 8.0)
 
                 left_env = self._get_envelope(
-                    stimuli_dir / left_wav_name, sfreq_out, n_times, bp
+                    stimuli_dir / left_env_name, sfreq_out, n_times, bp
                 )
                 right_env = self._get_envelope(
-                    stimuli_dir / right_wav_name, sfreq_out, n_times, bp
+                    stimuli_dir / right_env_name, sfreq_out, n_times, bp
                 )
 
                 if left_env is not None and right_env is not None:
@@ -270,6 +324,13 @@ class KULeuvenDataset(BaseDataset):
                 audio_b=audio_b,
                 audio_sr=int(sfreq_out),
             )
+
+    # ------------------------------------------------------------------
+    def _envelope_wav_name(self, presented: str) -> str:
+        """WAV file the envelope is computed from (see ``envelope_source``)."""
+        if self.envelope_source == "dry":
+            return _HRTF_SUFFIX.sub("_dry.wav", presented)
+        return presented
 
     # ------------------------------------------------------------------
     def _get_envelope(
@@ -292,10 +353,12 @@ class KULeuvenDataset(BaseDataset):
                 method=self.envelope_method,
             )
 
-        env = self._env_cache[key]
+        env = self._env_cache[key]                     # (T,) or (K, T)
 
-        # Truncate or zero-pad to match EEG length
-        if len(env) >= target_len:
-            return env[:target_len]
-        return np.pad(env, (0, target_len - len(env))).astype(np.float32)
+        # Truncate or zero-pad to match EEG length, along the time (last) axis
+        n = env.shape[-1]
+        if n >= target_len:
+            return env[..., :target_len]
+        pad = [(0, 0)] * (env.ndim - 1) + [(0, target_len - n)]
+        return np.pad(env, pad).astype(np.float32)
 
