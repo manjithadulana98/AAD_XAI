@@ -1201,6 +1201,59 @@ Notes
   accuracy at 20 s (0.771 vs 0.792). All comparisons use the round-9 rule.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-14
+Experiment: Story-disjoint round 11 screen: EOG regression before StimulusGAT (eogB)
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v16.py, PART eogB (Kaggle GPU kernel
+  dulanamanjitha/story-disjoint-v16-round11-eogb, code at commit eb363ac, about
+  3.6 GPU-h)
+- story_disjoint_v16eogB.json and per-fold npz (Kaggle output; untracked).
+  Offline analysis as pre-registered in the v16 header, paired with round-9
+  fixB (same folds and seeds 3, 4) and with the TRF+EA+EOG-regression baseline
+  (2026-11-10 entry); test windows verified identical across the three.
+
+Method / Protocol
+- Round-9 corrected StimulusGAT, unchanged; one factor: the 3 bipolar EOG
+  derivations (VEOG_R, VEOG_L, HEOG) regressed out of the 64 scalp channels,
+  weights fitted per subject per split, before EA. Transductive for test
+  subjects (unlabelled EEG and EOG), like EA; needs EOG electrodes at test time.
+- Data check in the run: scalp channels of the 72-column load equal the
+  round-9 EEG (max relative difference 8e-14). S1 EEG variance explained by the
+  EOG: Fp1 0.94, Fpz 0.93, AF7 0.92, Fp2 0.90, AF3 0.83, AF8 0.80.
+- Rule: KEEP iff mean class-balanced val over 36 (fold, seed) runs >= +0.5
+  points vs fixB AND 2-seed ensemble controls at chance (subject Wilcoxon vs
+  0.5 p >= 0.05 at 5/10/20/40 s, no fold >= 0.6 at 5 s).
+
+Results
+- Val: fixB 0.7068, eog 0.7143, +0.75 points (eog higher in 23/36 runs, lower
+  in 12/36; seed 3 +0.65, seed 4 +0.85). Meets the bar.
+- Controls (2-seed eog ensemble): shift 0.494 at 5 s, subject p 0.13 / 0.88 /
+  1.0 / 0.91, max fold 0.543; swap 0.500, p 0.97 / 0.23 / 0.43 / 0.36, max fold
+  0.535. Clean.
+- DECISION: KEEP; confirmation PART eogA (seeds 42, 1, 2) pushed 2026-11-14.
+- Test, descriptive (mean of 18 subjects):
+    2-seed ensemble   5 s     10 s    20 s    40 s    1 s     2 s
+    round-9 fixB      0.697   0.760   0.837   0.907   0.569   0.622
+    eog               0.701   0.768   0.845   0.928   0.570   0.627
+    diff              +0.4    +0.8    +0.8    +2.0    +0.1    +0.5 points
+    (eog higher in 13/18 at 5 s, p=0.18; 40 s p=0.046 uncorrected)
+  Single seeds: seed 3 +0.3 / +1.0 / +0.5 / +1.7, seed 4 -0.1 / -0.2 / +0.5 /
+  -0.8 points at 5/10/20/40 s (all n.s.). Single-model 1 s / 2 s: 0.568 /
+  0.621 (seed 3), 0.566 / 0.617 (seed 4) vs CA-TCN 0.583 / 0.634.
+- 2-seed eog ensemble vs TRF+EA+EOG regression: +2.8 / +4.1 / +5.3 / +7.5
+  points at 5/10/20/40 s, Holm p 0.012 / 0.012 / 0.002 / 0.004.
+
+Notes
+- Removing the eye signal did not lower accuracy at any length. StimulusGAT
+  was therefore not reading attention-related ocular information; the X1
+  occlusion ranking of Fp/AF (2026-11-08) is better read as dependence on
+  eye-dominated, noisy channels. The occlusion re-check on the round-11
+  checkpoints is the direct test.
+- The test gains are small and mostly n.s.; the val gain may partly be
+  selection noise from the 2-subject val set. The 5-seed confirmation decides
+  "better" / "no loss" / "loss" (Holm over 4 lengths).
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
