@@ -1372,6 +1372,118 @@ Notes
   the generalisation audit.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-15
+Experiment: KUL external held-out test (pre-registered, frozen at b4dd2bc)
+Sources:
+- docs/preregistration_kul_external_test.md (FROZEN 2026-11-15).
+- notebooks/kaggle_run_kul_external_sgat.py, PART A (kernel
+  dulanamanjitha/kul-external-sgat-a, seeds 42 / 1 / 2, code at b4dd2bc) and
+  PART B (kernel dulanamanjitha/kul-external-sgat-b, seeds 3 / 4, code at
+  ba7c585). b4dd2bc..ba7c585 changes RESULTS_LOG.txt only, so all three runs
+  executed identical code.
+- notebooks/kaggle_run_kul_external_trf.py (kernel
+  dulanamanjitha/kul-external-trf, code at b4dd2bc).
+- scripts/analyse_kul_external.py, run once on the three outputs after all
+  three runs had finished. Per-fold npz and json are Kaggle output (untracked;
+  KUL licence CC-BY-NC-SA, kernels private).
+
+Method / Protocol
+- Data: KU Leuven AAD (Zenodo 4004271 v2.0), 16 subjects, experiments 1 and 2
+  (8 trials per subject; experiment 3 excluded as pre-registered). Subject MD5s,
+  stimulus fingerprint, montage order (64/64) and design checks passed in every
+  kernel.
+- Model: round-9 StimulusGAT unchanged (no EOG regression: KUL has no EOG).
+  15-band power-law envelope from the dry wavs, EA per subject per split.
+- Split: subject_group_story_out(content_group=kul_story_part, story folds
+  (1,2) / (3,4), 8 subject groups of 2, 2 val subjects, seed 42) -> 16 folds;
+  every trial tested once; test subjects and test story parts unseen in training.
+- Baseline: TRF + EA (1-8 Hz, lags 0-400 ms, same envelope, alpha and variant by
+  val correlation), same folds and 5 s test windows.
+- Decisions: SGAT sums 5 s logit differences within a trial; the TRF recomputes
+  the correlation over the whole window (frozen rule).
+- Claim rule: H1 (ensemble > 0.5 at 5 s, one-sided Wilcoxon) and H2 "better"
+  (Holm over 5/10/20/40 s) and both controls clean.
+
+Results (16 subjects; 5-seed ensemble vs TRF + EA)
+  L     SGAT ens  TRF+EA  diff     SGAT higher/lower  p        Holm
+  5 s   0.6880    0.6552  +0.0328  14/2               0.0048   0.014
+  10 s  0.7543    0.7090  +0.0453  13/3               0.0025   0.0099
+  20 s  0.8129    0.7759  +0.0370  12/4               0.012    0.019
+  40 s  0.8880    0.8438  +0.0443  11/2               0.0095   0.019
+- H1: 0.688 at 5 s, 16/16 subjects above 0.5 (min 0.593), p = 1.5e-5 -> TRUE.
+- H2 (pre-registered outcome): BETTER.
+- Controls (ensemble): shifted 0.503 at 5 s, subject p 0.98 / 0.73 / 0.88 /
+  0.76, max fold 0.545; swapped 0.500, p 0.95 / 0.78 / 0.78 / 0.90, max fold
+  0.526. Clean. TRF shift control 0.503 (p = 0.68).
+
+CLAIM (pre-registered): TRUE. StimulusGAT, developed only on DTU, decodes
+attention on KUL for unseen subjects and unseen stories and beats TRF + EA at
+every decision length.
+
+Descriptive (pre-specified, no decision attached)
+- Narrator bias: track-1 pick rate 0.490 (p = 0.13). Side bias: left pick rate
+  0.484 (p = 0.053), a slight lean to the right ear, not significant.
+- Condition at 5 s: dry 0.679, HRTF 0.697 (paired p = 0.13).
+- Single-model mean: 1 s 0.565, 2 s 0.606, 5 s 0.675, 10 s 0.737; ensemble
+  1 s 0.572, 2 s 0.618. Seeds at 5 s: 0.676 / 0.674 / 0.674 / 0.680 / 0.670.
+- Mean class-balanced val 0.697 (A) / 0.692 (B); TRF val 0.658. Median best
+  epoch 3 (range 1-20).
+- TRF with the summed-score rule: 10 s 0.708, 20 s 0.778, 40 s 0.857.
+
+Post-hoc sensitivity (NOT confirmatory; added after the frozen analysis)
+- Every DTU comparison in this log scores the TRF with the summed-score rule.
+  The pre-registration chose the recomputed rule for the TRF ("on DTU it is the
+  TRF's own rule"). That holds for the TRF notebook's own summary, not for the
+  comparisons in this log, and on DTU the recomputed rule was the weaker one for
+  the TRF at 20 s (0.771 vs 0.792). Re-running H2 with the TRF on the summed rule:
+    L     diff     SGAT higher/lower  p        Holm
+    5 s   +0.0328  14/2               0.0048   0.014
+    10 s  +0.0463  14/2               0.0010   0.0040
+    20 s  +0.0350  12/4               0.034    0.068
+    40 s  +0.0312   9/5               0.079    0.079
+  The outcome rule still gives "better", so the claim does not depend on the
+  aggregation rule. Per length, the 20 s and 40 s wins do: they are not
+  Holm-significant when the TRF uses the rule that is stronger for it at 40 s.
+
+DTU vs KUL (same model, same TRF + EA baseline, TRF on the summed rule)
+  L     DTU SGAT  DTU gap  KUL SGAT  KUL gap
+  5 s   0.702     +3.4     0.688     +3.3
+  10 s  0.766     +4.0     0.754     +4.6
+  20 s  0.846     +5.5     0.813     +3.5
+  40 s  0.921     +7.1     0.888     +3.1
+  (DTU: round-9 5-seed ensemble, 18 subjects, gap Holm <= 0.017 at all lengths.)
+- Absolute accuracy drops by 1.2-1.4 points at 5 and 10 s and by 3.3 points at
+  20 and 40 s. The gap over the linear baseline transfers fully at 5 and 10 s
+  and shrinks at 20 and 40 s.
+
+Deviations and conduct
+- One run of each kernel; no crash, no re-run, no configuration change.
+- Part B ran at ba7c585, not b4dd2bc. The only change between them is this
+  log, so the code was identical.
+- The first download of part B stopped after 7 of 16 fold files, without the
+  log. It was downloaded again into a new empty folder (16 / 16 files plus the
+  log), and the analysis used that copy. The truncated copy was not analysed.
+- KUL accuracy was not looked at before all three runs had finished. The
+  health checks on each log covered tracebacks, fold count, MD5, graph, design
+  and integrity, and did not read any accuracy.
+
+Notes
+- This is the first evidence that the DTU result is not overfit to DTU by
+  rounds 1-9 of validation-based selection. The 5 s gap is unchanged on data
+  that played no part in any decision.
+- The smaller 20 s and 40 s gaps are partly a ceiling effect: the TRF's
+  long-window accuracy is about the same on both datasets (0.857 vs 0.850 at
+  40 s). With only 8 trials per subject, KUL also has few 40 s decisions per
+  subject: 3 subjects tie at 40 s under the frozen rule, 2 under the summed rule.
+- Short windows: the KUL single model reaches 0.565 at 1 s and 0.606 at 2 s,
+  about 0.3 and 1.2 points below its DTU numbers.
+- These numbers come from a subject- and story-disjoint split. They are not
+  comparable with KUL results from splits where training and test windows
+  come from the same trial.
+- Still open: whether attention-based explanations transfer between datasets.
+  That analysis would be exploratory under section 8 of the pre-registration.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
