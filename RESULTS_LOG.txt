@@ -1317,6 +1317,61 @@ Notes
   1 / 2 / 5 / 10 s. No ensemble was run here.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-15
+Experiment: Story-disjoint round 11 confirmation: EOG regression before StimulusGAT, 5-seed ensemble
+Sources:
+- notebooks/kaggle_run_dtu_story_disjoint_v16.py, PART eogA (kernel
+  dulanamanjitha/story-disjoint-v16-round11-eoga, seeds 42 / 1 / 2, code at
+  697d8bb) + PART eogB (2026-11-14 screen, seeds 3 / 4, code at eb363ac). No
+  change to src/ or the notebook between the two commits.
+- Pre-registered offline analysis (v16 header): 5-seed eog ensemble vs 5-seed
+  round-9 fix ensemble (v14 fixA + fixB). Same 18 folds and test windows
+  (asserted).
+
+Method / Protocol
+- subject_group_story_out (6 subject groups x 3 story folds, 2 val subjects).
+  Round-9 StimulusGAT; one factor: VEOG_R, VEOG_L, HEOG regressed out of the 64
+  scalp channels per subject per split, before EA. Transductive, like EA.
+- Decisions over L s: sign of summed 5 s logit differences within a trial.
+- Rule: "better" iff positive with Holm p < 0.05 at some length; "no loss" iff
+  the mean difference is >= -0.5 points at every length; else "loss". Controls at
+  every length.
+
+Results (18 subjects; 5-seed ensembles)
+  L     fix (round 9)  eog (round 11)  diff     eog higher  p       Holm
+  5 s   0.7017         0.7079          +0.0062  12/18       0.089   0.27
+  10 s  0.7661         0.7808          +0.0147  13/18       0.013   0.052
+  20 s  0.8462         0.8458          -0.0004   8/18       0.98    1
+  40 s  0.9213         0.9231          +0.0019   9/18       0.61    1
+- Controls (eog ensemble): shifted 0.501 at 5 s, subject p 0.31 / 0.11 / 0.93 /
+  0.30; swapped 0.501, p 0.88 / 0.19 / 0.53 / 0.34; max fold at 5 s 0.537 /
+  0.532. Clean.
+- vs TRF + EA + EOG regression (the round-11 TRF baseline): +3.5 / +5.4 / +5.4 /
+  +7.0 points at 5/10/20/40 s, higher in 14-15 of 18, Holm p <= 0.003 at all lengths.
+- Single-model mean (eog / fix): 1 s 0.568 / 0.568, 2 s 0.620 / 0.618,
+  5 s 0.692 / 0.688, 10 s 0.760 / 0.753 (CA-TCN 0.583 / 0.634 / 0.703 / 0.767).
+  5-seed ensemble 1 s 0.574, 2 s 0.632.
+- Seeds at 5 s: eog s42 0.701, s1 0.691, s2 0.690, s3 0.691, s4 0.688 (seed SD
+  0.005, vs 0.010 for fix; the low fix seed 1 is not low here).
+- Mean class-balanced val: eogA 0.7135, eogB 0.7143 vs fixA 0.7096, fixB 0.7068.
+
+DECISION (pre-registered): NO LOSS. Not "better": the largest gain, +1.5 points at
+10 s, has Holm p = 0.052. Controls clean. The screen's KEEP (validation rule)
+stands, so EOG regression is part of the DTU configuration from round 11. KUL has
+no EOG channels, so the KUL external test uses round 9 (pre-registered).
+
+Notes
+- Removing the eye signal costs nothing at any length and gives small,
+  non-significant gains at 5 and 10 s. Its value is interpretability hygiene:
+  explanations of the round-11 model cannot be driven by ocular activity, which
+  the X1 occlusion (Fp/AF ranked first) had raised as a concern.
+- StimulusGAT's lead over the equally preprocessed linear baseline is unchanged
+  and significant at every length.
+- Validation (2 subjects) again rose more than test; the val rule kept a factor
+  whose test effect is near zero, consistent with the winner's-curse caveat in
+  the generalisation audit.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
