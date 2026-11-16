@@ -1484,6 +1484,95 @@ Notes
   That analysis would be exploratory under section 8 of the pre-registration.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-16
+Experiment: Explanation transfer DTU -> KUL (exploratory; X1 harness on the KUL round-9 models)
+Sources:
+- notebooks/kaggle_run_kul_xai_transfer.py, PART A / B (kernels
+  dulanamanjitha/kul-xai-transfer-a / -b, code at ef6ac92; 91 + 88 min GPU) on the
+  80 checkpoints of kul-external-sgat-a / -b. Saved KUL test decisions reproduced
+  exactly in all 32 subject-folds (agreement 1.000).
+- notebooks/kaggle_dtu_electrode_variance.py (kernel dtu-electrode-variance, CPU,
+  ef6ac92): DTU reference maps on the X1 windows (window counts match X1).
+- scripts/analyse_xai_transfer.py, run once on xai_round9.json (X1), dtu_variance.json
+  and xai_kul_{A,B}.json. On the DTU X1 output it reproduces every X1 number above.
+
+Method / Protocol
+- Status: exploratory under section 8 of docs/preregistration_kul_external_test.md.
+  Rules in the notebook header, written before any KUL explanation was computed.
+- Replication: the X1 rules unchanged (16 subjects, each subject's 2 folds pooled).
+- Transfer: T1 band-stop profiles (KUL subject vs DTU group, Spearman over 8 bands;
+  prediction: theta and alpha1 are the top two); T2 channel group maps (X1 recipe),
+  raw and partial Spearman controlling for both datasets' log-variance maps and the
+  electrode in-degree, subject-bootstrap 95% CIs, split-half ceilings; "transfers"
+  iff the partial CI excludes 0; T3 edge maps (descriptive).
+
+Results: replication (11 of 14 X1 verdicts replicate)
+                                      DTU      KUL
+  Delete area occl / IG / attn / rand 0.557 / 0.577 / 0.588 / 0.607   0.559 / 0.567 / 0.578 / 0.594
+  Keep area   occl / IG / attn / rand 0.539 / 0.536 / 0.543 / 0.525   0.529 / 0.534 / 0.542 / 0.527
+  Edges attn / attn x grad / random   0.674 / 0.669 / 0.693           0.655 / 0.646 / 0.671
+  Sanity rho occl / IG / attn / band  -0.21 / -0.07 / +0.29 / -0.10   -0.13 / -0.12 / +0.39 / -0.07
+  Seed stability occl / IG / attn     0.696 / 0.567 / 0.385           0.794 / 0.658 / 0.425
+- Replicate: IG faithful (delete and keep); attention faithful but least faithful
+  (H2, p 0.008 / 0.008 on KUL); both edge methods faithful; band-power attribution
+  fails against band-stop (KUL rho +0.19); IG and attention not seed-stable;
+  sanity passes for occlusion, IG and bands.
+- Differ: (1) attention FAILS sanity on KUL (+0.39 vs +0.29 on DTU): most of its
+  map does not come from learned weights. (2) Occlusion fails the keep half on KUL
+  (Holm p 0.43; delete half p < 0.0001): its top electrodes are needed but not
+  sufficient. (3) Occlusion is seed-stable on KUL (0.794).
+
+Results: transfer
+- T1 bands (margin drop when the band is filtered out, DTU / KUL): delta 0.053 /
+  0.137, theta 0.167 / 0.173, alpha1 0.117 / -0.014, alpha2 0.100 / 0.002, beta and
+  gamma <= 0.024 on both. Per-subject Spearman with the DTU profile: median +0.13
+  (one-sided p = 0.013); group profiles +0.02. Prediction fails (KUL top two: theta,
+  delta). Theta reliance transfers; alpha reliance does not.
+- T2 channels (raw rho [CI]; partial rho [CI]; ceiling):
+    occlusion  +0.60 [0.37, 0.72]   +0.54 [0.10, 0.62]   0.91  -> transfers
+    IG         +0.25 [-0.07, 0.48]  +0.28 [-0.01, 0.46]  0.67  -> not shown
+    attention  +0.87 [0.83, 0.88]   +0.80 [0.73, 0.82]   0.99  -> transfers
+  Reference: the log-variance maps agree across datasets (+0.93). Occlusion maps
+  follow their own variance maps (+0.84 DTU, +0.82 KUL); attention follows the
+  in-degree (+0.57, +0.67). IG split-half reliability is 0.53 on DTU (0.84 KUL).
+- T3 edges: attention +0.90 [0.86, 0.91], attention x gradient +0.88 [0.80, 0.88].
+- Top electrodes: occlusion Fp1 / Fp2 / Fpz / AF7 / AF8 on both datasets, the same
+  five as the log-variance ranking; IG C5 first on both, then fronto-central and
+  temporal sites (DTU FC6, T8, FCz, C3; KUL TP8, FC6, FT8, FC5); attention C3 / C5
+  first on both.
+
+READING (exploratory)
+- The faithfulness verdicts mostly hold on independent data. The ranking of methods
+  holds: IG is faithful in both directions on both datasets, attention is the least
+  faithful, and band-power attribution is not a valid band report.
+- Occlusion reproduces its frontal-polar map on KUL, where it equals the variance
+  ranking. On KUL its top electrodes fail the keep test. Together with X1, level 3
+  and the ocular control, occlusion measures dependence on high-variance channels,
+  not where the attended-speech signal is.
+- Attention maps agree strongly across datasets, but attention fails sanity on KUL
+  and failed the planted test (level 3). The agreement most likely reflects the
+  shared architecture and electrode graph. It is not evidence for attention as an
+  explanation. The in-degree control does not cover all of that structure.
+- IG has the most plausible map (C5 first on both datasets, fronto-central and
+  temporal sites) and passes faithfulness on both, but its cross-dataset agreement
+  is not shown at this power (partial CI reaches -0.01). The DTU IG map is the
+  least reliable (split-half 0.53).
+- Band reliance: theta is the main band on both datasets. The DTU alpha reliance
+  does not appear on KUL, where delta matters more.
+
+Deviations and conduct
+- Analysis run once, after all three runs had finished. No rule changed.
+- Local smoke run covered fold 0 only (about 23 min per subject-fold on CPU). It
+  reproduced the saved logits and its JSON fed the analysis functions.
+- The first download of A and of the DTU variance failed on a network error. Both
+  were downloaded again into new folders; the failed attempts were not used.
+
+Notes
+- Limitation: T2 has no randomised-model reference map. Such a map would show how
+  much cross-dataset agreement the architecture alone produces, which matters most
+  for attention. It is a candidate for a follow-up, labelled as such.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
