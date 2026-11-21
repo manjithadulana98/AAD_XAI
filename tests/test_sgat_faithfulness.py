@@ -197,3 +197,23 @@ def test_cascade_sanity_randomises_every_module_and_decorrelates():
     assert list(rho)[0] == "readout" and list(rho)[-1] == "temporal_encoder"
     assert all(torch.equal(before[k], v) for k, v in model.state_dict().items())   # original untouched
     assert all(-1.0 <= r <= 1.0 for r in rho.values())
+
+
+def test_fully_randomised_is_the_final_cascade_state():
+    torch.manual_seed(0)
+    model = _make_stimulus_gat(film_pooling="corr").eval()
+    x, env, y = torch.randn(8, 6, 128), torch.randn(8, 2, 128), torch.randint(0, 2, (8,))
+    before = {k: v.clone() for k, v in model.state_dict().items()}
+    seen = []
+    sf.cascade_sanity(model, lambda m: (seen.append({k: v.clone() for k, v in m.state_dict().items()}),
+                                        sf.attention_node_scores(sf.ElectrodeSpaceScorer(m), x, env, y))[1],
+                      seed=3)
+    rnd = sf.fully_randomised(model, seed=3)
+    assert all(torch.equal(seen[-1][k], v) for k, v in rnd.state_dict().items())       # same draws as R1's last step
+    assert all(torch.equal(before[k], v) for k, v in model.state_dict().items())       # original untouched
+    params = dict(model.named_parameters())
+    assert all(not torch.equal(params[n], p) for n, p in rnd.named_parameters())       # every parameter re-drawn
+    for n, b in model.named_buffers():
+        assert torch.equal(b, dict(rnd.named_buffers())[n])                            # graph kept
+    other = sf.fully_randomised(model, seed=4)
+    assert not all(torch.equal(a, b) for a, b in zip(rnd.parameters(), other.parameters()))

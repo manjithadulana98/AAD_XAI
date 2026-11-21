@@ -396,10 +396,26 @@ def cascade_sanity(model: StimulusGAT, attr_fn, seed: int = 0) -> dict[str, floa
     original = np.asarray(attr_fn(m), dtype=float)
     out = {}
     for name, child in reversed(list(m.named_children())):
-        with torch.no_grad():
-            for p in child.parameters():
-                scale = float(p.std()) if p.numel() > 1 and float(p.std()) > 0 else 1.0
-                p.copy_((torch.randn(p.shape, generator=g) * scale).to(p.device, p.dtype))
+        _redraw(child, g)
         rho = spearmanr(original, np.asarray(attr_fn(m), dtype=float)).correlation
         out[name] = float(0.0 if np.isnan(rho) else rho)
     return out
+
+
+def _redraw(module: nn.Module, g: torch.Generator) -> None:
+    """Re-draw every parameter of ``module`` in place: Gaussian with the parameter's own scale."""
+    with torch.no_grad():
+        for p in module.parameters():
+            scale = float(p.std()) if p.numel() > 1 and float(p.std()) > 0 else 1.0
+            p.copy_((torch.randn(p.shape, generator=g) * scale).to(p.device, p.dtype))
+
+
+def fully_randomised(model: StimulusGAT, seed: int = 0) -> StimulusGAT:
+    """A copy of ``model`` with every parameter re-drawn: the final state of cascade_sanity
+    with the same seed. Buffers (the electrode graph's adjacency mask) are kept, so the copy
+    is the architecture and graph without anything learned. The input model is untouched."""
+    g = torch.Generator().manual_seed(seed)
+    m = copy.deepcopy(model).eval()
+    for _, child in reversed(list(m.named_children())):
+        _redraw(child, g)
+    return m
