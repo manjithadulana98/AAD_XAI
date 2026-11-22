@@ -1573,6 +1573,83 @@ Notes
   for attention. It is a candidate for a follow-up, labelled as such.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-23
+Experiment: DTU -> KUL zero-shot (exploratory; the 90 DTU round-9 models and 18 DTU TRFs on KUL, no retraining)
+Sources:
+- notebooks/kaggle_run_kul_zero_shot_sgat.py (kernel dulanamanjitha/kul-zero-shot-sgat,
+  GPU, code at 0989d9e): the 90 DTU checkpoints (sgat_v14_fix, 18 folds x seeds
+  42/1/2/3/4) scored on every KUL test fold, with shifted and swapped controls.
+- notebooks/kaggle_run_kul_zero_shot_trf.py (kernel dulanamanjitha/kul-zero-shot-trf,
+  CPU, code at a663e70): one TRF per DTU fold, chosen on DTU validation, 18-decoder
+  ensemble on KUL.
+- scripts/analyse_kul_zero_shot.py, run once. The rules are in its header and were
+  written and tested on synthetic outputs before any zero-shot number existed.
+
+Method / Protocol
+- Status: exploratory under section 8 of docs/preregistration_kul_external_test.md.
+- The KUL windows, labels and swap permutations are the same as in the KUL external
+  test (checked: identical in 16/16 folds).
+- Preprocessing is the DTU recipe applied to KUL: 1-31 Hz EEG, power-law envelope, and
+  EA computed from each KUL test split's own unlabelled EEG.
+- The DTU models never saw KUL data, KUL voices or KUL stories.
+- Z1: zero-shot ensemble > 0.5 (one-sided Wilcoxon over 16 subjects, Holm over
+  5/10/20/40 s).
+- Controls: shifted and swapped envelopes, two-sided Wilcoxon vs 0.5 at each length;
+  clean iff all p >= 0.05 and no fold >= 0.6.
+- Claim iff Z1 at 5 s holds and both controls are clean.
+- Z2: KUL-trained minus zero-shot. Z3: zero-shot SGAT vs zero-shot TRF. Z4: transfer
+  loss, SGAT vs TRF.
+
+Results (16 subjects)
+                       5 s     10 s    20 s    40 s
+  Zero-shot SGAT       0.608   0.652   0.699   0.763   (16/16 > 0.5 at every length,
+                                                          Holm p = 0.0009)
+  KUL-trained SGAT     0.688   0.754   0.813   0.888
+  Zero-shot TRF + EA   0.593   0.629   0.675   0.734   (p vs 0.5 = 0.0004)
+  Shifted control      0.504   0.511   0.513   0.523   (p = 0.48 / 0.28 / 0.30 / 0.027)
+  Swapped control      0.504   0.506   0.513   0.498   (p = 0.50 / 0.31 / 0.14 / 0.90)
+- CLAIM (pre-registered rule): NOT MET. The shifted control at 40 s is 0.523 with
+  p = 0.027 (9 subjects above 0.5, 3 below, 4 at 0.5), which breaks "all controls
+  clean". At 5 s every control is clean: max fold 0.546 shifted, 0.532 swapped.
+- Z2: KUL training is better at every length (16/16 subjects, Holm p = 0.0017). The
+  zero-shot model keeps 58% (5 s) to 68% (40 s) of the KUL-trained above-chance
+  accuracy.
+- Z3: no difference between zero-shot SGAT and zero-shot TRF (+0.015 at 5 s, 12/16,
+  Holm p = 0.19).
+- Z4: SGAT loses about 0.018 more than the TRF at 5 s (Holm p = 0.052), and the gap
+  shrinks at longer windows. Not significant.
+- Descriptive:
+  - single DTU models average 0.590 (range 0.561-0.628) and single DTU decoders
+    0.591, so the ensemble adds about 2 points for both;
+  - no condition, track or ear effect (dry 0.607 vs hrtf 0.609; right-ear pick rate
+    0.498; track-1 pick rate 0.503);
+  - the KUL-trained models' own shift control is clean at all lengths (p >= 0.73).
+
+READING (exploratory)
+- Models trained on DTU decode KUL subjects well above chance without retraining:
+  new subjects, new voices, new stories, a different lab and amplifier, and Dutch
+  instead of Danish. This answers the concern that the DTU result is specific to its
+  candidates. Shifted and swapped controls are at chance at 5 s, so the zero-shot
+  accuracy is not a voice or label shortcut.
+- The pre-registered claim still fails, on a single control cell. Of eight
+  uncorrected control tests, the 40 s shift test gives p = 0.027, with a mean of 0.523
+  against a test accuracy of 0.763 at the same length. That fits a chance hit (about
+  a 1-in-3 chance that one of eight tests falls below 0.05 by chance), but under the
+  rule the claim is reported as not met.
+- Moving datasets costs StimulusGAT a little more than the TRF (Z4 at 5 s, not
+  significant), and without KUL training it is no better than the TRF (Z3). Its
+  advantage on KUL comes from training on KUL, not from a more transferable
+  representation.
+
+Deviations and conduct
+- The first TRF kernel run failed before scoring anything: the envelope-band check
+  read the first DTU trial, which is single-talker (audio_a is None). The fix
+  (a663e70) checks the first two-talker trial and changes nothing else. The local
+  smoke now includes single-talker trials. Run version 2 was used; version 1
+  produced no results.
+- Analysis run once, after both kernels finished. No rule changed.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
