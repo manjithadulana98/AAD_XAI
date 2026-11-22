@@ -182,7 +182,8 @@ for t in kul_trials:
     assert t.eeg.shape[0] == 64 and t.sfreq == SFREQ
     assert t.audio_a.ndim == 2 and t.audio_a.shape == t.audio_b.shape and t.audio_a.shape[1] == t.eeg.shape[1]
     assert t.label == int(TRIAL_INFO[t.trial_id]["attended_ear"] == "R")
-assert dtu_trials[0].audio_a.shape[0] == kul_trials[0].audio_a.shape[0], "envelope band counts differ"
+_dtu_two_talker = next(t for t in dtu_trials if t.audio_a is not None)   # DTU also has single-talker trials
+assert _dtu_two_talker.audio_a.shape[0] == kul_trials[0].audio_a.shape[0], "envelope band counts differ"
 print(f"KUL trials: {len(kul_trials)} in {time.time() - _t0:.0f}s; envelope bands K = {kul_trials[0].audio_a.shape[0]}")
 
 # %% [markdown]
