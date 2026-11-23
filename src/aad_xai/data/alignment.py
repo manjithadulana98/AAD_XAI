@@ -69,14 +69,66 @@ def euclidean_align(trials: Sequence[Trial], shrinkage: float = 1e-3) -> list[Tr
     Returns new Trial objects in the same order. Only ``eeg`` changes; it keeps
     its shape (C, T) and dtype. Labels and audio are untouched.
     """
+    by_subject = _by_subject(trials)
+    W = {s: inverse_sqrtm(euclidean_reference([trials[i].eeg for i in idx], shrinkage))   # (C, C)
+         for s, idx in by_subject.items()}
+    return _apply(trials, W)
+
+
+def calibration_eeg(trials: Sequence[Trial], seconds: float | None = None) -> dict[str, np.ndarray]:
+    """Per subject, the first ``seconds`` of EEG of ``trials``, taken in list order.
+
+    Each trial is centred per channel and the pieces are joined in time, so the
+    calibration covariance weights every sample equally. The trial that crosses
+    the budget is cut. ``seconds=None`` takes all of the subject's EEG.
+
+    Returns {subject_id: (C, T_cal)} float64. Raises ValueError if a subject has
+    less EEG than ``seconds``.
+    """
+    out: dict[str, np.ndarray] = {}
+    for s, idx in _by_subject(trials).items():
+        pieces, n = [], 0
+        need = None if seconds is None else int(round(seconds * trials[idx[0]].sfreq))
+        for i in idx:
+            if need is not None and n >= need:
+                break
+            x = np.asarray(trials[i].eeg, dtype=np.float64)
+            x = x - x.mean(axis=1, keepdims=True)                 # (C, T_i)
+            if need is not None:
+                x = x[:, :need - n]
+            pieces.append(x)
+            n += x.shape[1]
+        if need is not None and n < need:
+            raise ValueError(f"{s}: {n} calibration samples, {need} needed")
+        out[s] = np.concatenate(pieces, axis=1)                   # (C, T_cal)
+    return out
+
+
+def euclidean_align_to(trials: Sequence[Trial], calibration: dict[str, np.ndarray],
+                       shrinkage: float = 1e-3) -> list[Trial]:
+    """Align every subject's trials with a reference from that subject's calibration EEG only.
+
+    ``calibration`` maps subject_id to (C, T_cal) EEG, e.g. from :func:`calibration_eeg`
+    on recordings that are not scored. The trials themselves do not enter the
+    reference, so unlike :func:`euclidean_align` this is not transductive for them.
+    Returns new Trial objects in the same order; only ``eeg`` changes.
+    """
+    missing = sorted({t.subject_id for t in trials} - set(calibration))
+    if missing:
+        raise KeyError(f"no calibration EEG for {missing}")
+    W = {s: inverse_sqrtm(euclidean_reference([calibration[s]], shrinkage))         # (C, C)
+         for s in _by_subject(trials)}
+    return _apply(trials, W)
+
+
+def _by_subject(trials: Sequence[Trial]) -> dict[str, list[int]]:
     by_subject: dict[str, list[int]] = {}
     for i, t in enumerate(trials):
         by_subject.setdefault(t.subject_id, []).append(i)
+    return by_subject
 
-    out: list[Trial | None] = [None] * len(trials)
-    for idx in by_subject.values():
-        W = inverse_sqrtm(euclidean_reference([trials[i].eeg for i in idx], shrinkage))   # (C, C)
-        for i in idx:
-            t = trials[i]
-            out[i] = dataclasses.replace(t, eeg=(W @ t.eeg.astype(np.float64)).astype(t.eeg.dtype))
-    return out  # type: ignore[return-value]
+
+def _apply(trials: Sequence[Trial], W: dict[str, np.ndarray]) -> list[Trial]:
+    """W[subject] @ eeg for every trial; shape (C, T) and dtype kept."""
+    return [dataclasses.replace(t, eeg=(W[t.subject_id] @ t.eeg.astype(np.float64)).astype(t.eeg.dtype))
+            for t in trials]
