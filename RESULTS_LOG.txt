@@ -1650,6 +1650,66 @@ Deviations and conduct
 - Analysis run once, after both kernels finished. No rule changed.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-23
+Experiment: Architecture-only reference for the DTU -> KUL explanation transfer (exploratory)
+Sources:
+- notebooks/kaggle_run_xai_random_reference.py, DATASET = DTU / KUL (kernels
+  dulanamanjitha/xai-random-reference-dtu at 0989d9e, -kul at 19ecb5b; the code
+  is identical, since only RESULTS_LOG and the zero-shot TRF notebook changed between
+  the two; KUL 53 min GPU).
+  - Each trained checkpoint is copied and every parameter re-drawn
+    (`sgat_faithfulness.fully_randomised`, the last state of the cascade sanity test).
+  - The X1 maps are recomputed on exactly the X1 / KUL-transfer windows: 54 DTU and
+    32 KUL subject-folds, window counts checked.
+- scripts/analyse_xai_random_reference.py, run once. The rules are in its header and
+  were tested on synthetic outputs before any random-model map existed.
+
+Method / Protocol
+- A1, channels: the T2 partial Spearman (controlling for both datasets' log-variance
+  maps and the in-degree), trained minus random, on the same subject-bootstrap
+  resamples (2000). The agreement is "beyond the architecture" iff the 95% CI of the
+  difference is above 0.
+- A2, edges: the same with raw Spearman (500 resamples).
+
+Results
+- Random-model accuracy: DTU 0.500, KUL 0.495, so the randomisation removes
+  decoding.
+                        trained              random               trained - random
+  A1 occlusion        +0.54 [0.10, 0.62]   -0.21 [-0.50, 0.30]   +0.75 [0.01, 0.94]  BEYOND
+  A1 IG               +0.28 [-0.01, 0.46]  +0.07 [-0.26, 0.30]   +0.20 [-0.17, 0.57] not beyond
+  A1 attention        +0.80 [0.73, 0.82]   +0.99 [0.99, 0.99]    -0.19 [-0.26, -0.17] not beyond
+  A2 attention        +0.90 [0.86, 0.91]   +0.88 [0.85, 0.89]    +0.02 [-0.02, 0.05] not beyond
+  A2 attn x gradient  +0.88 [0.80, 0.88]   +0.10 [-0.13, 0.28]   +0.78 [0.56, 0.97]  BEYOND
+- Descriptive:
+  - random attention maps are identical across datasets (raw rho +1.00) and fully
+    reliable (split-half 1.00), so they are set by the graph and architecture alone;
+  - the trained attention maps keep much of that structure (trained vs random map:
+    channels DTU +0.61, KUL +0.70; edges +0.49, +0.57);
+  - random occlusion and IG maps are noise (reliability <= 0.09) and unrelated to the
+    trained maps (|rho| <= 0.20).
+
+READING (exploratory)
+- Attention: the cross-dataset agreement of attention maps is explained by the
+  architecture. A randomised model gives near-perfect agreement on its own (0.99 for
+  channels, 0.88 for edges), and training lowers channel agreement rather than raising
+  it. With the failed sanity test on KUL and the failed planted test, raw attention
+  should not be reported as an explanation of what the model learned.
+- Attention x gradient on edges: its agreement is learned (+0.78 above the random
+  reference). The gradient term removes the architecture-fixed part. This is the edge
+  explanation to report.
+- Occlusion: its agreement is beyond the architecture, but only just (CI lower bound
+  0.01). This does not change the earlier reading that occlusion largely tracks
+  electrode variance, which the partial correlation already controls.
+- IG: not shown, as in T2. IG remains the faithful channel method, but its
+  cross-dataset agreement cannot be claimed at this power.
+- This closes the limitation noted in the 2026-11-16 entry.
+
+Deviations and conduct
+- The KUL kernel waited about a day for a GPU slot and ran on the then-current commit
+  19ecb5b instead of 0989d9e. The code that matters is unchanged (git diff checked).
+- Analysis run once. No rule changed.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
