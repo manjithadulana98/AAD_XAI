@@ -1710,6 +1710,94 @@ Deviations and conduct
 - Analysis run once. No rule changed.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-25
+Experiment: Calibration-recording EA instead of transductive test-session EA (DTU, both protocols)
+Sources:
+- notebooks/kaggle_run_dtu_calibration_ea.py (GPU kernel dulanamanjitha/dtu-calibration-ea)
+  and notebooks/kaggle_run_dtu_trf_calibration_ea.py (CPU kernel
+  dulanamanjitha/dtu-trf-calibration-ea), both at 633bc67.
+- scripts/analyse_calibration_ea.py, run once after both kernels finished. The rules
+  were fixed in the script and its tests before the runs.
+
+Method / Protocol
+- No retraining. The saved models are re-scored; only the alignment of the test
+  subjects changes. Training and validation alignment is unchanged (EA per subject
+  inside each split).
+  - Story-disjoint: the 90 round-9 checkpoints (5 seeds x 18 folds) and the TRF + EA
+    decoder of each fold (same variant and alpha as before).
+  - CA-TCN protocol: the 144 EA-arm checkpoints (seed 42).
+- Test alignment arms (whitening matrix from the stated EEG, shrinkage 1e-3):
+  - full: the subject's own test EEG (transductive; reproduction gate);
+  - none: no test alignment;
+  - st10 / st30 / st60 (primary) / stall: the first 10 / 30 / 60 s or all of the
+    subject's single-talker trials, in recording order;
+  - os60 (story-disjoint only): the first 60 s of the subject's two-talker trials
+    outside the fold's test split.
+- Single-talker data: every subject has 10 single-talker trials (500 s), never scored
+  in any fold. They are interleaved with the two-talker trials in the session (the
+  first one is at recording position 0-17). So st60 uses unscored EEG from the same
+  session, not a recording made before it.
+- Gates: decisions of the full arm against the saved outputs.
+  - SD: 161895 / 161895 windows (max |logit diff| 4e-6).
+  - CT: 221269 / 221269.
+  - TRF: 1.00000, same selection in every fold.
+
+Results
+- Story-disjoint (18 subjects, 5-seed ensemble; sum of 5 s logit differences for
+  longer windows):
+                 StimulusGAT                       TRF
+  arm       5s     10s    20s    40s       5s     10s    20s    40s
+  full     0.702  0.766  0.846  0.921     0.667  0.726  0.792  0.850
+  none     0.670  0.724  0.794  0.856     0.620  0.669  0.727  0.779
+  st10     0.696  0.765  0.838  0.907     0.657  0.709  0.775  0.844
+  st30     0.700  0.761  0.834  0.909     0.665  0.723  0.792  0.853
+  st60     0.700  0.766  0.843  0.915     0.668  0.726  0.792  0.855
+  stall    0.703  0.767  0.848  0.922     0.669  0.726  0.790  0.856
+  os60     0.698  0.765  0.849  0.908     0.666  0.719  0.795  0.854
+- C1 (primary), StimulusGAT st60 minus full:
+  - diffs at 5 / 10 / 20 / 40 s: -0.002, -0.000, -0.004, -0.007;
+  - no drop is significant (lowest Holm p 0.61; 40 s: 4 subjects higher, 7 lower);
+  - outcome: LOSS by the pre-registered rule, because the 40 s mean drop (-0.0065)
+    exceeds the 0.005 margin.
+- C2, StimulusGAT st60 minus TRF st60: +0.032 / +0.040 / +0.051 / +0.060, Holm p
+  <= 0.019 at every length. Outcome: BETTER. The gap matches the full-EA gap
+  (+0.034 to +0.071).
+- Controls (st60 ensemble): shifted 0.504, swapped 0.497 at 5 s, no subject-level p
+  < 0.16 at any length. Clean.
+- CLAIM "calibration EA keeps the story-disjoint result": NOT MET (C1 only).
+- CA-TCN protocol (seed 42, bootstrap CI against CA-TCN 0.583 / 0.634 / 0.703 /
+  0.767 / 0.858 / 0.925 at 1 / 2 / 5 / 10 / 25 / 50 s):
+  - full:  0.572 / 0.625 / 0.708 / 0.771 / 0.869 / 0.934 (below at 1 s, level elsewhere);
+  - st60:  0.574 / 0.627 / 0.704 / 0.770 / 0.868 / 0.930 (below at 1 s, level elsewhere);
+  - none:  0.562 / 0.607 / 0.669 / 0.733 / 0.817 / 0.884 (below everywhere);
+  - noEA training run: 0.560 / 0.609 / 0.678 / 0.737 / 0.825 / 0.882.
+  - Controls at 5 s: shifted 0.496 (p 0.12), swapped 0.496 (p 0.47). Clean.
+  - CLAIM "parity with CA-TCN without transductive alignment": MET.
+- L2, st60 minus the no-EA run: +0.013 to +0.048, Holm p <= 0.037 at all six lengths.
+  Calibration EA helps.
+
+READING
+- Removing the transductive step costs almost nothing. With 60 s of unscored EEG,
+  every story-disjoint length is within 0.007 of full EA, and no difference is close
+  to significance. The pre-registered claim still fails, on the 0.005 margin at 40 s.
+  At 40 s each subject has few decisions, so the margin is tight against the noise.
+  That is a property of the rule as written and is reported as a fail.
+- The advantage over the TRF does not depend on transductive alignment: same size,
+  still significant at every length.
+- The CA-TCN parity result holds with a calibration recording, and calibration EA is
+  clearly better than training without EA.
+- Amount of calibration (descriptive): 10 s already recovers most of the gain over
+  none. 60 s to all 500 s match full EA. stall reaches 0.922 at 40 s, but it was not
+  the primary arm and is not used to overturn C1.
+- The paper can report calibration-based alignment (60 s of unscored EEG) as the
+  non-transductive setting. It must state that this EEG comes from the same session.
+
+Deviations and conduct
+- The GPU kernel waited in the Kaggle GPU queue; the TRF kernel finished first. Both
+  ran 633bc67.
+- Analysis run once. No rule changed.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
