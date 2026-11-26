@@ -1798,6 +1798,99 @@ Deviations and conduct
 - Analysis run once. No rule changed.
 ----------------------------------------------------------------------
 
+Entry date: 2026-11-26
+Experiment: Interpretability X1 after eye removal (round-11 models) and frontal-polar group deletion
+Sources:
+- notebooks/kaggle_run_dtu_xai_round11.py (GPU kernel
+  dulanamanjitha/xai-round11-eye-removal, c57288f, 220 min).
+  - It explains the 90 round-11 checkpoints with the X1 harness, unchanged: same windows,
+    same halves, same settings.
+  - Electrode space is the EOG-cleaned scalp EEG, i.e. the round-11 model input before EA.
+  - It also scores the 90 round-9 checkpoints on the same windows of the uncleaned EEG,
+    for the group-deletion test.
+- scripts/analyse_xai_round11.py, run once.
+  - Rules: in the notebook header; analysis and tests written before the run.
+  - Round-9 reference: the X1 output xai_round9.json (2026-11-08 entry).
+
+Method / Protocol
+- Gates:
+  - Saved test decisions reproduced by all 90 round-11 and all 90 round-9 models
+    (agreement 1.0000 on every subject-fold).
+  - The same 54 subject-folds and window counts as X1.
+  - EOG load equals the scalp EEG (max relative difference 8e-14).
+- Fp/AF = Fp1, Fpz, Fp2, AF7, AF3, AFz, AF4, AF8 (every Fp/AF electrode of the montage);
+  round 9's occlusion ranked exactly these 8 first.
+- E1 (primary): Fp/AF occlusion index = mean z of the 8 electrodes in each subject's
+  seed-averaged occlusion map. Test: round 11 < round 9.
+- E2: round-11 index > 0. E1 and E2 together give the outcome removed / reduced / not reduced.
+- E3: Fp/AF reliance = extra accuracy drop when the 8 Fp/AF electrodes are deleted
+  (another window's signal swapped in) over 20 random sets of 8 other electrodes.
+  - Per subject, averaged over folds and 5 seeds.
+  - E3a: round 11 < round 9. E3b: round 11 > 0.
+- One-sided Wilcoxon over 18 subjects, p < 0.05 for each test.
+
+Results
+- E1 / E2:
+  - Fp/AF occlusion index: round 9 +1.39, round 11 +0.33; lower in 17/18 subjects.
+  - E1 p = 8e-6, holds. E2 p = 0.054, not shown.
+  - OUTCOME (pre-registered): the frontal-polar occlusion ranking is REMOVED.
+  - Round-11 occlusion top 10: T8, PO8, FCz, O2, PO4, C5, POz, TP8, Fp2, AF8.
+- E3, accuracy:
+  | | Intact | Fp/AF deleted | 8 random deleted | Extra drop from Fp/AF |
+  |---|---|---|---|---|
+  | Round 9 | 0.689 | 0.553 | 0.608 | +5.5 points |
+  | Round 11 | 0.693 | 0.568 | 0.613 | +4.5 points |
+  - Round 11 lower in 11/18 subjects.
+  - E3a p = 0.13, NOT shown: eye removal does not measurably reduce the model's reliance
+    on the frontal-polar electrodes.
+  - E3b p = 2e-5, holds: deleting Fp/AF still costs more than deleting 8 random electrodes.
+- Descriptive:
+  - Occlusion map vs the log-variance map of the model's own input: rho +0.84 (round 9),
+    +0.71 (round 11).
+  - EOG cleaning removes the Fp/AF variance peak. Round-11 variance top: PO8, O2, POz, PO4,
+    O1, AF7.
+  - IG and attention never ranked Fp/AF highly (index -0.17 / -0.13 in round 9, -0.26 /
+    -0.06 in round 11). Their top electrodes are unchanged: C5, FCz, C3, T8, FC6.
+- X1 rules on round 11 give the same verdict as round 9 on all 14:
+  - pass: sanity, channel and edge deletion faithfulness, H2;
+  - fail: band attribution vs band-stop, seed stability. Occlusion stability is 0.65
+    (round 9: 0.70).
+  - Deletion areas are nearly identical (occlusion 0.560, IG 0.569, attention 0.587,
+    random 0.608).
+- Band-stop margin drop, round 11 (round 9 in brackets):
+  - delta 0.135 (0.053);
+  - theta 0.210 (0.167);
+  - alpha1 0.134 (0.117);
+  - alpha2 0.105 (0.100);
+  - beta and gamma <= 0.04.
+
+READING
+- The answer to "are frontal-polar electrodes still first?" is no. By the pre-registered
+  rule, eye removal removes the Fp/AF occlusion ranking.
+- The attribution-free test says the cause is not the obvious one. The model depends on
+  the Fp/AF electrodes about as much after eye removal as before (4.5 vs 5.5 points extra
+  drop, not significantly different).
+  - So the round-9 occlusion ranking was mostly the high ocular variance of those
+    electrodes: zero-occlusion of a large-variance channel moves the input a lot. It was
+    not reliance on eye activity.
+  - Occlusion maps follow input variance (rho 0.84 / 0.71). They should always be shown
+    next to the variance map, with that caveat.
+- What the round-11 model still uses at Fp/AF is not removed by linear regression on the
+  three bipolar EOG channels. It could be frontal cortical activity, or ocular activity
+  that the three derivations do not capture linearly. This run cannot separate the two.
+- Caveat on E3b only: the Fp/AF set is a contiguous cluster, while the random sets are
+  scattered. Deleting a cluster removes spatially redundant signal that scattered
+  deletions leave. So "above random" partly reflects contiguity. E3a (same sets in both
+  rounds) is not affected.
+- The X1 faithfulness conclusions stand unchanged for the round-11 models.
+- IG and attention point to fronto-central and temporal sites (C5, FCz, T8, FC6), the
+  usual auditory topography, before and after eye removal.
+- After eye removal the model loses more when delta is filtered out (descriptive).
+
+Deviations and conduct
+- Analysis run once. No rule changed.
+----------------------------------------------------------------------
+
 Append template (copy/paste for new runs)
 ----------------------------------------------------------------------
 Entry date: YYYY-MM-DD
