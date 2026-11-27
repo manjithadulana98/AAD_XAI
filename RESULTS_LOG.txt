@@ -1867,6 +1867,8 @@ Results
 READING
 - The answer to "are frontal-polar electrodes still first?" is no. By the pre-registered
   rule, eye removal removes the Fp/AF occlusion ranking.
+- [Qualified 2026-11-27: against matched contiguous sets, the reliance below is mostly a
+  contiguity effect; see the cluster-matched deletion entry.]
 - The attribution-free test says the cause is not the obvious one. The model depends on
   the Fp/AF electrodes about as much after eye removal as before (4.5 vs 5.5 points extra
   drop, not significantly different).
@@ -1889,6 +1891,106 @@ READING
 
 Deviations and conduct
 - Analysis run once. No rule changed.
+----------------------------------------------------------------------
+
+Entry date: 2026-11-27
+Experiment: Is the frontal-polar reliance specific? Cluster-matched group deletion (round 11 and round 9)
+Sources:
+- notebooks/kaggle_run_dtu_cluster_deletion.py (GPU kernel dulanamanjitha/xai-cluster-deletion,
+  262c91c, 60 min).
+  - Round-11 checkpoints (EOG-cleaned input) and round-9 checkpoints (uncleaned), 5 seeds x 18
+    folds each.
+  - Same windows, electrode space and permute deletion as the 2026-11-26 X1-after-eye-removal run.
+- src/aad_xai/xai/electrode_sets.py (compact clusters, rotated bands; tests/test_electrode_sets.py).
+- scripts/analyse_cluster_deletion.py, run once. Rules: in the notebook header; analysis and tests
+  written before the run.
+- This entry QUALIFIES the E3 reading of the 2026-11-26 entry (see READING).
+
+Method / Protocol
+- Gates:
+  - All 90 round-11 and 90 round-9 models reproduce their saved test decisions (1.0000).
+  - FP and scattered-set accuracies reproduce the 2026-11-26 run exactly (mean |diff| 0.0000).
+- Electrode sets (2-D montage coordinates, fixed before the run):
+  - FP: Fp1, Fpz, Fp2, AF7, AF3, AFz, AF4, AF8.
+  - SCATTER: the 20 random sets of 8 non-FP electrodes of the previous run.
+  - CLUSTERS: each electrode plus its 7 nearest neighbours; 55 distinct, 40 share no electrode
+    with FP (comparison family).
+  - BANDS: the FP band rotated about Cz in 45-degree steps, assigned one-to-one to the nearest
+    electrodes (same shape, at the cap edge). 5 share no electrode with FP (comparison family):
+    90 left temporal, 135 left parieto-occipital, 180 occipital, 225 right parieto-occipital,
+    270 right temporal.
+- Reliance of FP over a family = mean accuracy with a family set deleted minus accuracy with FP
+  deleted (extra drop caused by FP); per subject, mean over folds and 5 seeds.
+- C1 (primary, round 11): over CLUSTERS > 0. C2 (round 11): over BANDS > 0.
+  - One-sided Wilcoxon, n = 18, p < 0.05 each.
+  - Outcome: specific (both), not specific (neither), mixed (one).
+- C3: C1 and C2 on round 9.
+- C4 (round 11): scattered-set accuracy minus cluster accuracy > 0, i.e. contiguous deletions
+  cost more.
+
+Results
+- Accuracy after deletion (round 11 / round 9):
+  | Set deleted | Round 11 | Round 9 |
+  |---|---|---|
+  | none (intact) | 0.693 | 0.689 |
+  | FP | 0.568 | 0.553 |
+  | scattered | 0.613 | 0.608 |
+  | compact clusters | 0.577 | 0.581 |
+  | rotated bands | 0.564 | 0.569 |
+- C1 / C2, round 11 (extra drop from FP):
+  - Over compact clusters +0.91 points (median +1.41), > 0 in 13/18. p = 0.037, holds.
+  - Over rotated bands -0.37 points (median -0.34), > 0 in 7/18. p = 0.84, not shown.
+  - OUTCOME (pre-registered): MIXED.
+- C3, round 9:
+  - Over compact clusters +2.82 points, > 0 in 15/18 (p = 6e-4).
+  - Over rotated bands +1.60 points, > 0 in 12/18 (p = 0.017).
+  - OUTCOME: SPECIFIC.
+- C4, round 11: scattered minus clustered accuracy +3.60 points, > 0 in 18/18, p = 4e-6, holds.
+  Scattered deletions understate the cost of deleting any contiguous group.
+- Descriptive:
+  - Cluster-deletion map (accuracy drop when the cluster centred on each electrode is deleted):
+    - Round 9 top 10: Fz 13.8, Fp1 13.5, AF3 13.5, Fpz 13.3, AFz 13.3, Fp2 13.0, AF4 13.0,
+      AF7 12.7, T8 12.3, C6 12.3. FP deletion (13.6) costs more than 63/64 centred clusters.
+    - Round 11 top 10: FT8 13.9, FC6 13.6, T8 13.6, C6 13.6, TP7 13.1, CP5 13.1, P10 12.8,
+      P8 12.8, CP6 12.6, TP8 12.6. FP deletion (12.5) costs more than 52/64.
+  - Share of compact clusters that cost less than FP: median 0.57 (round 11), 0.71 (round 9).
+  - Band drops, round 11 (points): 90 deg 13.8 and 270 deg 14.0 (temporal) exceed FP 12.5;
+    occipital 12.4.
+- EXPLORATORY (post hoc, not in the rules): round 11 < round 9, one-sided paired Wilcoxon on the
+  per-subject reliance.
+  - Over clusters: p = 0.022, 12/18 lower.
+  - Over bands: p = 0.037, 12/18 lower.
+  - Computation and per-band values: scratchpad cd_analysis.txt; it uses reliance() of the
+    analysis script on both deletion keys.
+
+READING
+- The 2026-11-26 entry concluded that eye removal left the model's reliance on Fp/AF unchanged
+  (4.5 vs 5.5 points above scattered sets, E3a not shown). That comparison was mostly a
+  contiguity effect: deleting any contiguous group of 8 costs 3.6 points more than deleting
+  scattered electrodes (C4, 18/18 subjects).
+- Against matched contiguous sets:
+  - Round 9 relied on Fp/AF specifically. FP beat both families, and the frontal centres fill the
+    top 8 of the cluster map.
+  - Round 11 does not, by the pre-registered rule (mixed). FP only just beats compact clusters
+    (+0.9 points), not the shape-matched edge bands; the temporal bands cost more than FP.
+  - The round-11 cluster map is now led by temporal and fronto-temporal sites, which matches what
+    IG and attention showed in both rounds.
+- An exploratory, not pre-registered test suggests that eye removal did reduce the Fp/AF-specific
+  reliance (p = 0.02-0.04 against matched sets). It does not overturn the pre-registered E3a
+  (scattered sets, p = 0.13); it says the earlier test was the wrong comparison.
+- Corrected statement: before eye removal the model relied specifically on the frontal-polar
+  band; after linear EOG regression that specific reliance is no longer clearly present. The
+  remaining cost of deleting Fp/AF is about what deleting any edge band of the same shape costs.
+- Caveats:
+  - Round-9 and round-11 models were trained separately, so this compares retrained models, not
+    one model with and without EOG.
+  - Residual ocular signal that the three linear EOG derivations miss cannot be ruled out.
+  - Compact clusters include interior sites; the rotated bands are the closer shape match, and
+    edge bands may share edge-specific properties (higher variance, reference distance).
+
+Deviations and conduct
+- Analysis run once. No rule changed. The exploratory comparison was added after seeing the
+  results and is labelled as such.
 ----------------------------------------------------------------------
 
 Append template (copy/paste for new runs)
